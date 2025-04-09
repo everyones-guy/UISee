@@ -1,4 +1,4 @@
-start_ui_mapper:
+
 import os
 import sys
 import argparse
@@ -11,7 +11,7 @@ import json
 import time
 
 from ui_mapper_app import init_db, parse_sql_and_js
-import ui_mapper_gui
+import UISee
 
 DB_FILE = "ui_map.db"
 LOG_DIR = "logs"
@@ -69,7 +69,7 @@ def setup_logging():
 def save_widget_tree_snapshot():
     conn = None
     try:
-        conn = ui_mapper_gui.sqlite3.connect(DB_FILE)
+        conn = UISee.sqlite3.connect(DB_FILE)
         cur = conn.cursor()
         cur.execute("SELECT page_name, widget_type, widget_name, widget_index FROM widgets")
         rows = cur.fetchall()
@@ -115,7 +115,7 @@ def save_widget_tree_snapshot():
 
 def auto_login_if_needed(app):
     try:
-        conn = ui_mapper_gui.sqlite3.connect(DB_FILE)
+        conn = UISee.sqlite3.connect(DB_FILE)
         cur = conn.cursor()
         cur.execute("SELECT value FROM page_details WHERE tag='Name' AND value='login'")
         result = cur.fetchone()
@@ -165,7 +165,7 @@ def main():
         def launch_gui():
             root.deiconify()
             close_splash()
-            app = ui_mapper_gui.UIMapperGUI(root)
+            app = UISee.UIMapperGUI(root)
             auto_login_if_needed(app)
             app.load_pages()
             logging.info("UI loaded.")

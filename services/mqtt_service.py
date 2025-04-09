@@ -1,4 +1,3 @@
-mqtt_service:
 import os
 import json
 import time

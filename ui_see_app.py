@@ -168,9 +168,9 @@ def ask_user_for_folders():
     return sql_folder, js_folder
 
 def launch_main_gui():
-    import ui_mapper_gui
+    import UISee
     root = tk.Tk()
-    app = ui_mapper_gui.UIMapperGUI(root)
+    app = UISee.UIMapperGUI(root)
     root.mainloop
     
 # ---------------- MAIN ENTRY ----------------
