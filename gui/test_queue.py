@@ -53,11 +53,16 @@ class TestQueueBuilder:
         self._build_step_area()
         self._add_example_steps()
         self._refresh_step_list()
+        self.progress = ttk.Progressbar(self.win, orient="horizontal", mode="determinate")
+        self.progress.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.root.title(f"Test Queue - {datetime.now().strftime('%H:%M:%S')}")
+
+
 
     def _build_controls(self):
         controls = ttk.Frame(self.win)
         controls.pack(fill=tk.X, padx=5, pady=5)
-        ttk.Button(controls, text="Run Sequence", command=self._run_timed_sequence).pack(side=tk.LEFT)
+        ttk.Button(controls, text="Run Sequence", command=self.run_sequence_threaded).pack(side=tk.LEFT)
         ttk.Button(controls, text="Delete Step", command=self._delete_selected_step).pack(side=tk.LEFT, padx=5)
         ttk.Button(controls, text="Save as Template", command=self._save_as_template).pack(side=tk.LEFT, padx=5)
         ttk.Button(controls, text="Load Template", command=self._load_template).pack(side=tk.LEFT, padx=5)
@@ -173,13 +178,6 @@ class TestQueueBuilder:
     def _handle_drop(self, event):
         self.drag_start_index = None
 
-    def _delete_selected_step(self):
-        idx = self.selected_step_index.get()
-        if 0 <= idx < len(self.steps):
-            self.steps.pop(idx)
-            self.selected_step_index.set(-1)
-            self._refresh_step_list()
-
     def _save_as_template(self):
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON Files", "*.json")])
         if path:
@@ -193,12 +191,14 @@ class TestQueueBuilder:
             with open(path, "r") as f:
                 self.steps = json.load(f)
             self._refresh_step_list()
+            self.progress["maximum"] = len(self.steps)
+            self.progress["value"] = 0
 
-    def _run_timed_sequence(self):
-        for step in self.steps:
-            print(f"Running: {step}")
-            time.sleep(1)  # Simulated timing
 
+    def run_sequence_threaded(self):
+        import threading
+        t = threading.Thread(target=self._run_timed_sequence, daemon=True)
+        t.start()
 
     def _highlight_selected(self, selected_index):
         for i, child in enumerate(self.scrollable_frame.winfo_children()):
@@ -234,6 +234,11 @@ class TestQueueBuilder:
     def _run_timed_sequence(self):
         results = []
         repeat_count = max(1, self.repeat_var.get())
+
+        total = len(self.steps) * repeat_count
+        self.progress["maximum"] = total
+        self.progress["value"] = 0
+
         for repeat_index in range(repeat_count):
             for step in self.steps:
                 start_time = datetime.now()
@@ -271,6 +276,9 @@ class TestQueueBuilder:
                 result["end"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 result["duration_sec"] = (datetime.strptime(result["end"], "%Y-%m-%d %H:%M:%S") - start_time).total_seconds()
                 results.append(result)
+
+                self.progress["value"] += 1
+                self.progress.update()
 
         export_path = filedialog.asksaveasfilename(
             defaultextension=".json",

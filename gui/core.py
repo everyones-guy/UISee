@@ -108,6 +108,8 @@ class UIMapperGUI:
         toolbar.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(toolbar, text="Assemble Command", command=self.open_command_builder).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="Test Queue Builder", command=self.open_test_queue_builder).pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Button(toolbar, text="Send SIMIN", command=self.send_simin_command).pack(side=tk.LEFT, padx=(0, 5))
+
 
     # builders
     def open_command_builder(self):
@@ -116,11 +118,17 @@ class UIMapperGUI:
         self.command_builder_instance.open_builder()
 
     def open_test_queue_builder(self):
+        import tkinter as tk
         from gui.test_queue import TestQueueBuilder
-        self.test_queue_instance = TestQueueBuilder(self)
-        self.test_queue_instance.build_tab()
 
-        # Optional: prompt user to import steps
+        new_win = tk.Toplevel(self.root)
+        new_win.title("Test Queue Builder")
+
+        builder = TestQueueBuilder(self)
+        builder.root = new_win  # assign this new window
+        builder.build_tab()
+
+        # prompt user to import steps
         if messagebox.askyesno("Import", "Import steps from Command Builder?"):
             self.test_queue_instance.import_steps_from_command_builder()
 
@@ -150,6 +158,19 @@ class UIMapperGUI:
             self.output_console.insert(tk.END, "[MQTT] Subscribed to 'exec'\n")
         except Exception as e:
             self.output_console.insert(tk.END, f"[MQTT ERROR] {e}\n")
+
+    def send_simin_command(self):
+        cmd = simpledialog.askstring("SIMIN Command", "Enter SIMIN command to send:")
+        if not cmd:
+            return
+        try:
+            ssh_cmd = f"ssh {self.test_creds['user']}@{self.test_creds['host']} \"{cmd}\""
+            out = subprocess.run(ssh_cmd, shell=True, capture_output=True, text=True)
+            self.output_console.insert(tk.END, f"\n[SIMIN]\n{out.stdout}{out.stderr}\n")
+            self.output_console.see(tk.END)
+        except Exception as e:
+            self.output_console.insert(tk.END, f"[SIMIN ERROR] {e}\n")
+
 
     def simulate_input_popup(self):
         popup = tk.Toplevel(self.root)
