@@ -117,6 +117,32 @@ class UIMapperGUI:
 
 
 
+    def load_remote_config_inputs(self):
+        try:
+            cmd = "cat /usr/share/Configfiles/*.json"
+            ssh_cmd = f"ssh {self.test_creds['user']}@{self.test_creds['host']} \"{cmd}\""
+            result = subprocess.run(ssh_cmd, shell=True, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                self.output_console.insert(tk.END, f"[CONFIG] Failed to fetch config files:\n{result.stderr}\n")
+                return
+
+            # Try to parse all combined JSONs (one big array or object)
+            try:
+                raw = result.stdout.strip()
+                # Handle multiple files concatenated
+                configs = [json.loads(part) for part in raw.split("}\n{")]
+                self.remote_inputs = []
+                for cfg in configs:
+                    self.remote_inputs.extend(cfg.get("hardwareInputs", []))
+            except Exception as e:
+                self.output_console.insert(tk.END, f"[CONFIG] JSON parse error: {str(e)}\n")
+                return
+
+            self.output_console.insert(tk.END, f"[CONFIG] Found {len(self.remote_inputs)} hardware inputs.\n")
+
+        except Exception as e:
+            self.output_console.insert(tk.END, f"[CONFIG] Error: {str(e)}\n")
 
 
     # builders
@@ -173,6 +199,9 @@ class UIMapperGUI:
         except Exception as e:
             self.output_console.insert(tk.END, f"[SSH ERROR] {e}\n")
 
+        self.load_remote_config_inputs()
+
+
     def close_ssh(self):
         try:
             self.mqtt_adapter.client.disconnect()
@@ -204,16 +233,26 @@ class UIMapperGUI:
         popup = tk.Toplevel(self.root)
         popup.title("Simulate Input")
 
-        tk.Label(popup, text="Simulated command or value:").pack(pady=5)
-        entry = ttk.Entry(popup)
-        entry.pack(padx=10, fill=tk.X)
+        input_options = getattr(self, "remote_inputs", [])
+        input_var = tk.StringVar()
+        val_var = tk.StringVar()
+
+        ttk.Label(popup, text="Hardware Input:").pack(pady=(10, 0))
+        input_combo = ttk.Combobox(popup, values=input_options, textvariable=input_var, state="readonly")
+        input_combo.pack(padx=10, fill=tk.X)
+
+        ttk.Label(popup, text="Value to Simulate:").pack(pady=(10, 0))
+        ttk.Entry(popup, textvariable=val_var).pack(padx=10, fill=tk.X)
 
         def send_simulated():
-            val = entry.get().strip()
-            if val:
-                result = self.mqtt_adapter.send_command_and_wait("Simulated.Input", val)
-                self.output_console.insert(tk.END, f"[SIMULATE] {val} => {result}\n")
+            val = val_var.get().strip()
+            hw = input_var.get().strip()
+            if hw and val:
+                result = self.mqtt_adapter.send_command_and_wait(f"Simulated.{hw}", val)
+                self.output_console.insert(tk.END, f"[SIMULATE] Simulated.{hw} = {val} => {result}\n")
                 popup.destroy()
+            else:
+                messagebox.showwarning("Missing Input", "Select input and value first.")
 
         ttk.Button(popup, text="Send", command=send_simulated).pack(pady=10)
 
