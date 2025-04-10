@@ -1,0 +1,38 @@
+def preview_full_page(self):
+        preview_win = tk.Toplevel(self.root)
+        preview_win.title(f"Preview: {self.page_name}")
+
+        canvas = tk.Canvas(preview_win, bg="#f0f0f0")
+        scrollbar = tk.Scrollbar(preview_win, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scroll_frame = ttk.Frame(canvas)
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        cur = self.conn.cursor()
+        cur.execute("""
+            SELECT id, widget_type, widget_name FROM widgets WHERE page_name = ?
+        """, (self.page_name,))
+        widgets = cur.fetchall()
+
+        row = 0
+        for db_id, widget_type, widget_name in widgets:
+            display = widget_name or f"Widget_{db_id}"
+            widget_type = widget_type.lower()
+
+            if widget_type == "button":
+                w = ttk.Button(scroll_frame, text=display,
+                               command=lambda name=widget_name: self.generate_bvt_sequence(name))
+            elif widget_type == "textbox":
+                w = ttk.Entry(scroll_frame)
+                w.insert(0, display)
+            elif widget_type == "label":
+                w = ttk.Label(scroll_frame, text=display)
+            else:
+                w = ttk.Label(scroll_frame, text=f"[{widget_type}] {display}")
+            w.grid(row=row, column=0, padx=10, pady=5, sticky="w")
+            row += 1
