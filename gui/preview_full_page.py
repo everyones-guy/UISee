@@ -1,6 +1,9 @@
 # gui/preview_page.py
+
 import tkinter as tk
 from tkinter import ttk
+from tkinter import messagebox
+
 
 class PreviewPage:
     def __init__(self, root, conn, page_name, bvt_callback=None):
@@ -26,26 +29,72 @@ class PreviewPage:
 
         cur = self.conn.cursor()
         cur.execute("""
-            SELECT id, widget_type, widget_name FROM widgets WHERE page_name = ?
+            SELECT id, widget_type, widget_name, widget_index, widget_config_id, widget_id
+            FROM widgets
+            WHERE page_name = ?
+            ORDER BY widget_index ASC
         """, (self.page_name,))
         widgets = cur.fetchall()
 
-        for row, (db_id, widget_type, widget_name) in enumerate(widgets):
+        for row_num, (db_id, widget_type, widget_name, widget_index, config_id, widget_id) in enumerate(widgets):
             display = widget_name or f"Widget_{db_id}"
             widget_type = widget_type.lower()
 
+            # Wrap widget in a framed box
+            box = ttk.Frame(scroll_frame, padding=5, relief="solid")
+            box.grid(row=row_num, column=0, padx=10, pady=5, sticky="w")
+
+            # Create widget and insert into the frame
             if widget_type == "button":
                 w = ttk.Button(
-                    scroll_frame,
+                    box,
                     text=display,
                     command=(lambda name=widget_name: self.bvt_callback(name)) if self.bvt_callback else None
                 )
             elif widget_type == "textbox":
-                w = ttk.Entry(scroll_frame)
+                w = ttk.Entry(box)
                 w.insert(0, display)
             elif widget_type == "label":
-                w = ttk.Label(scroll_frame, text=display)
+                w = ttk.Label(box, text=display)
             else:
-                w = ttk.Label(scroll_frame, text=f"[{widget_type}] {display}")
+                w = ttk.Label(box, text=f"[{widget_type}] {display}")
+            w.pack()
 
-            w.grid(row=row, column=0, padx=10, pady=5, sticky="w")
+            # Tooltip metadata string
+            meta_text = (
+                f"Widget Name: {widget_name or 'Unnamed'}\n"
+                f"Type: {widget_type}\n"
+                f"Index: {widget_index or 'N/A'}\n"
+                f"Widget ID: {widget_id}\n"
+                f"Config ID: {config_id}\n"
+                f"Page: {self.page_name}"
+            )
+
+            self._attach_tooltip(w, meta_text)
+
+    def _attach_tooltip(self, widget, text):
+        tooltip = tk.Toplevel(widget)
+        tooltip.wm_overrideredirect(True)
+        tooltip.withdraw()
+        tooltip_label = tk.Label(
+            tooltip,
+            text=text,
+            justify='left',
+            background="#ffffe0",
+            relief="solid",
+            borderwidth=1,
+            font=("tahoma", "8", "normal")
+        )
+        tooltip_label.pack(ipadx=1)
+
+        def on_enter(event):
+            x = event.x_root + 10
+            y = event.y_root + 10
+            tooltip.geometry(f"+{x}+{y}")
+            tooltip.deiconify()
+
+        def on_leave(event):
+            tooltip.withdraw()
+
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
