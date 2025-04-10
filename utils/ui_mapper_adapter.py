@@ -15,16 +15,11 @@ class UIMQTTAdapter:
         self.ssh_host = test_creds.get("host") if test_creds else os.getenv("SSH_HOST")
         self.ssh_user = test_creds.get("user") if test_creds else os.getenv("SSH_USER")
         self.ssh_pass = os.getenv("SSH_PASS")
-
-    def send_command_and_wait(self, widget_path, value):
-        """
-        Sends a command and waits for a response from the controller via MQTT.
-        Falls back to SSH if not connected.
-        """
-        if self.client.connected:
-            return self.client.send_command_and_wait(widget_path, value)
-        else:
-            return self.send_via_ssh(f"{widget_path}={value}")
+        
+    def send_command_and_wait(self, path, value):
+        command = f"{path}={value}"
+        self.client.publish("exec", command)
+        return {"status": "sent", "output": f"Published to exec: {command}"}
 
     def publish_exec(self, widget_path, value):
         """

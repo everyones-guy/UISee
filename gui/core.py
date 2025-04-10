@@ -59,6 +59,8 @@ class UIMapperGUI:
 
         # Unified MQTT + SSH command adapter
         self.mqtt_adapter = UIMQTTAdapter(self.test_creds)
+        self.client = MQTTService()
+
         self.parser_service = ParserService(self.root, self.conn)
 
         # State + buffers

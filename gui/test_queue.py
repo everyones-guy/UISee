@@ -58,16 +58,39 @@ class TestQueueBuilder:
         self.progress = ttk.Progressbar(self.win, orient="horizontal", mode="determinate")
         self.progress.pack(fill=tk.X, padx=10, pady=(0, 10))
         self.root.title(f"Test Queue - {datetime.now().strftime('%H:%M:%S')}")
+        
 
 
 
     def _build_controls(self):
         controls = ttk.Frame(self.win)
         controls.pack(fill=tk.X, padx=5, pady=5)
+
         ttk.Button(controls, text="Run Sequence", command=self.run_sequence_threaded).pack(side=tk.LEFT)
         ttk.Button(controls, text="Delete Step", command=self._delete_selected_step).pack(side=tk.LEFT, padx=5)
         ttk.Button(controls, text="Save as Template", command=self._save_as_template).pack(side=tk.LEFT, padx=5)
         ttk.Button(controls, text="Load Template", command=self._load_template).pack(side=tk.LEFT, padx=5)
+
+        # Thread-safe repeat
+        self.repeat_var = tk.StringVar(value="1")
+        ttk.Label(controls, text="Repeat:").pack(side=tk.LEFT, padx=(15, 0))
+        repeat_entry = ttk.Entry(controls, textvariable=self.repeat_var, width=5)
+        repeat_entry.pack(side=tk.LEFT)
+        def update_repeat_val(*args):
+            try:
+                self.repeat_count_value = int(self.repeat_var.get())
+            except ValueError:
+                self.repeat_count_value = 1
+        self.repeat_var.trace_add("write", update_repeat_val)
+        update_repeat_val()
+
+        # Thread-safe skip post-wait
+        self.skip_post_wait_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(controls, text="Skip Post-Wait", variable=self.skip_post_wait_var).pack(side=tk.LEFT, padx=(10, 0))
+        self.skip_post_wait_var.trace_add("write", lambda *a: setattr(self, "skip_post_wait_val", self.skip_post_wait_var.get()))
+        setattr(self, "skip_post_wait_val", self.skip_post_wait_var.get())
+
+
 
     def _build_step_area(self):
         container = ttk.Frame(self.win)
@@ -140,12 +163,28 @@ class TestQueueBuilder:
     def _refresh_step_list(self):
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
+        self.preview_widgets.clear()
+        self.toggle_vars.clear()
 
         for idx, step in enumerate(self.steps):
             frame = tk.Frame(self.scrollable_frame, borderwidth=1, relief="raised", bg="#222")
             frame.pack(fill=tk.X, padx=5, pady=2)
-            frame.bind("<Button-1>", lambda e, i=idx: self._on_drag_start(i))
-            frame.bind("<B1-Motion>", self._on_drag_motion)
+
+            def select(i=idx):
+                self.selected_step_index.set(i)
+                self._highlight_selected(i)
+
+            def make_context_menu(index):
+                def show_context(event):
+                    self.selected_step_index.set(index)
+                    self._highlight_selected(index)
+                    menu = tk.Menu(self.root, tearoff=0)
+                    menu.add_command(label="Delete Step", command=self._delete_selected_step)
+                    menu.post(event.x_root, event.y_root)
+                return show_context
+
+            frame.bind("<Button-1>", lambda e, i=idx: select(i))
+            frame.bind("<Button-3>", make_context_menu(idx))
 
             label_text = f"{step['type'].upper()}: {step.get('command', step.get('value', ''))}"
             entry_var = tk.StringVar(value=step.get("command", step.get("value", "")))
@@ -162,6 +201,8 @@ class TestQueueBuilder:
             lbl.pack(side=tk.LEFT, padx=5)
             ent = ttk.Entry(frame, textvariable=entry_var, width=60)
             ent.pack(side=tk.LEFT, padx=5)
+            ent.bind("<Button-1>", lambda e, i=idx: select(i))
+            ent.bind("<Button-3>", make_context_menu(idx))
 
     def _on_drag_start(self, index):
         self.drag_start_index = index
@@ -244,10 +285,12 @@ class TestQueueBuilder:
 
     def _run_timed_sequence(self):
         results = []
-        repeat_count = max(1, getattr(self, "repeat_var", tk.IntVar(value=1)).get())
+        repeat_count = getattr(self, "repeat_count_value", 1)
+        skip_post_wait = getattr(self, "skip_post_wait_val", False)
         total = len(self.steps) * repeat_count
         self.progress["maximum"] = total
         self.progress["value"] = 0
+
         for repeat_index in range(repeat_count):
             for step in self.steps:
                 start_time = datetime.now()
@@ -280,13 +323,15 @@ class TestQueueBuilder:
                 except Exception as e:
                     result["status"] = "error"
                     result["output"] = str(e)
-                if not getattr(self, "skip_post_wait", tk.BooleanVar(value=False)).get():
+
+                if not skip_post_wait:
                     time.sleep(step.get("post_wait", 2))
                 result["end"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 result["duration_sec"] = (datetime.strptime(result["end"], "%Y-%m-%d %H:%M:%S") - start_time).total_seconds()
                 results.append(result)
                 self.progress["value"] += 1
                 self.progress.update()
+
         export_path = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("JSON Files", "*.json")],
