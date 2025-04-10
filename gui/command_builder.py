@@ -66,10 +66,16 @@ class CommandBuilder:
         # --- Dropdown Row ---
         row = ttk.Frame(win)
         row.pack(fill=tk.X, padx=10, pady=5)
+
         ttk.Label(row, text="Page:").pack(side=tk.LEFT)
+
         page_combo = ttk.Combobox(row, values=self.available_pages, textvariable=self.selected_page, state="readonly")
-        page_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        page_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         page_combo.bind("<<ComboboxSelected>>", self._populate_widgets)
+
+        # Parse button next to the Page dropdown
+        ttk.Button(row, text="Parse", width=8, command=self._reparse_and_reload_pages).pack(side=tk.LEFT)
+
 
         row2 = ttk.Frame(win)
         row2.pack(fill=tk.X, padx=10, pady=5)
@@ -111,7 +117,6 @@ class CommandBuilder:
         ttk.Button(action_row, text="Add Wait", command=self.add_wait_step).pack(side=tk.LEFT, padx=5)
         ttk.Button(action_row, text="Run All", command=self.run_sequence).pack(side=tk.LEFT, padx=5)
 
-        # --- Steps Preview ---
         # --- Steps Preview (Scrollable) ---
         self.step_container = ttk.Frame(win)
         self.step_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
@@ -144,9 +149,15 @@ class CommandBuilder:
         cur = self.conn.cursor()
         cur.execute("SELECT widget_name FROM widgets WHERE page_name = ?", (self.selected_page.get(),))
         self.widget_combo['values'] = [row[0] for row in cur.fetchall()]
+        if not self.widget_combo['values']:
+            self.widget_combo['values'] = ["<No widgets found>"]
+
         self.selected_widget.set("")
         self.selected_property.set("")
         self.property_combo['values'] = []
+        if not self.property_combo['values']:
+            self.property_combo['values'] = ["<No properties found>"]
+
 
     def _populate_properties(self, event=None):
         cur = self.conn.cursor()
@@ -178,6 +189,34 @@ class CommandBuilder:
     def add_mqtt_step(self):
         self.steps.append(("mqtt", f"Page.Widgets.{self.selected_widget.get()}.{self.selected_property.get()}={self.value.get()}"))
         self.refresh_steps()
+
+    def _reparse_and_reload_pages(self):
+        confirm = messagebox.askyesno("Re-parse Files", "This will reload widgets/functions from source files.\nContinue?")
+        if not confirm:
+            return
+
+        try:
+            sql_path, js_path = self.parser_service.ask_user_for_folders()
+            if not sql_path or not js_path:
+                messagebox.showwarning("Cancelled", "Parsing cancelled. No folders selected.")
+                return
+
+            self.parser_service.page_name = ""  # Optional reset
+            self.parser_service.load_sql_and_js(sql_path, js_path)
+
+            self.available_pages = self.parser_service.get_all_pages()
+            self.selected_page.set("")
+            self.selected_widget.set("")
+            self.selected_property.set("")
+            self.value.set("")
+            self.widget_combo['values'] = []
+            self.property_combo['values'] = []
+
+            messagebox.showinfo("Success", "Files re-parsed and data reloaded.")
+
+        except Exception as e:
+            messagebox.showerror("Parse Error", f"Failed to parse:\n{str(e)}")
+
 
     def add_ssh_step(self):
         def submit():
