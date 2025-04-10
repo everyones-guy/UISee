@@ -190,17 +190,35 @@ class UIMapperGUI:
     # ----- SSH + MQTT Controls -----
 
     def connect_ssh(self):
-        self.output_console.insert(tk.END, "[SSH] Connecting to controller...\n")
-        try:
-            self.mqtt_adapter.ssh_host = self.test_creds.get("host")
-            self.mqtt_adapter.ssh_user = self.test_creds.get("user")
-            self.mqtt_adapter.client.connect()
-            self.output_console.insert(tk.END, f"Connected to {self.test_creds['host']} as {self.test_creds['user']}\n")
-        except Exception as e:
-            self.output_console.insert(tk.END, f"[SSH ERROR] {e}\n")
+        popup = tk.Toplevel(self.root)
+        popup.title("Connect to Controller")
 
-        self.load_remote_config_inputs()
+        host_var = tk.StringVar(value=self.test_creds.get("host", ""))
+        user_var = tk.StringVar(value=self.test_creds.get("user", ""))
 
+        ttk.Label(popup, text="SSH Host:").pack(padx=10, anchor="w")
+        ttk.Entry(popup, textvariable=host_var).pack(fill=tk.X, padx=10, pady=(0, 5))
+
+        ttk.Label(popup, text="SSH User:").pack(padx=10, anchor="w")
+        ttk.Entry(popup, textvariable=user_var).pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        def connect():
+            self.test_creds["host"] = host_var.get()
+            self.test_creds["user"] = user_var.get()
+
+            self.output_console.insert(tk.END, f"[SSH] Connecting to {self.test_creds['host']} as {self.test_creds['user']}...\n")
+            try:
+                self.mqtt_adapter.ssh_host = self.test_creds["host"]
+                self.mqtt_adapter.ssh_user = self.test_creds["user"]
+                self.mqtt_adapter.client.connect()
+                self.output_console.insert(tk.END, "[SSH] Connected successfully.\n")
+
+                self.load_remote_config_inputs()  # <-- Auto-load simulate inputs
+                popup.destroy()
+            except Exception as e:
+                messagebox.showerror("SSH Error", str(e))
+
+        ttk.Button(popup, text="Connect", command=connect).pack(pady=5)
 
     def close_ssh(self):
         try:
@@ -210,11 +228,36 @@ class UIMapperGUI:
             self.output_console.insert(tk.END, f"[SSH Close Error] {e}\n")
 
     def subscribe_mqtt(self):
-        try:
-            self.mqtt_adapter.client.subscribe("exec")  # You can support dynamic topic input later
-            self.output_console.insert(tk.END, "[MQTT] Subscribed to 'exec'\n")
-        except Exception as e:
-            self.output_console.insert(tk.END, f"[MQTT ERROR] {e}\n")
+        popup = tk.Toplevel(self.root)
+        popup.title("Subscribe to MQTT")
+
+        host_var = tk.StringVar(value=self.mqtt_creds.get("host", "localhost"))
+        port_var = tk.StringVar(value=self.mqtt_creds.get("port", "1883"))
+        user_var = tk.StringVar(value=self.mqtt_creds.get("username", ""))
+        pass_var = tk.StringVar(value=self.mqtt_creds.get("password", ""))
+
+        fields = [("Host", host_var), ("Port", port_var), ("Username", user_var), ("Password", pass_var)]
+        for label, var in fields:
+            ttk.Label(popup, text=label + ":").pack(padx=10, anchor="w")
+            ttk.Entry(popup, textvariable=var, show="*" if "password" in label.lower() else "").pack(fill=tk.X, padx=10, pady=(0, 5))
+
+        def subscribe():
+            self.mqtt_creds.update({
+                "host": host_var.get(),
+                "port": port_var.get(),
+                "username": user_var.get(),
+                "password": pass_var.get()
+            })
+            try:
+                self.mqtt_adapter.client.connect(**self.mqtt_creds)
+                self.mqtt_adapter.client.subscribe("exec")
+                self.output_console.insert(tk.END, "[MQTT] Subscribed to topic 'exec'\n")
+                popup.destroy()
+            except Exception as e:
+                messagebox.showerror("MQTT Error", str(e))
+
+        ttk.Button(popup, text="Subscribe", command=subscribe).pack(pady=5)
+
 
     def send_simin_command(self):
         cmd = simpledialog.askstring("SIMIN Command", "Enter SIMIN command to send:")
