@@ -112,8 +112,32 @@ class CommandBuilder:
         ttk.Button(action_row, text="Run All", command=self.run_sequence).pack(side=tk.LEFT, padx=5)
 
         # --- Steps Preview ---
-        self.step_frame = tk.Frame(win)
-        self.step_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # --- Steps Preview (Scrollable) ---
+        self.step_container = ttk.Frame(win)
+        self.step_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=(5, 10))
+
+        self.step_canvas = tk.Canvas(self.step_container)
+        self.step_scrollbar = ttk.Scrollbar(self.step_container, orient="vertical", command=self.step_canvas.yview)
+        self.step_frame = tk.Frame(self.step_canvas)
+
+        self.step_frame.bind(
+            "<Configure>",
+            lambda e: self.step_canvas.configure(scrollregion=self.step_canvas.bbox("all"))
+        )
+
+        self.step_canvas.create_window((0, 0), window=self.step_frame, anchor="nw")
+        self.step_canvas.configure(yscrollcommand=self.step_scrollbar.set)
+
+        self.step_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.step_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Clear Steps button
+        ttk.Button(win, text="Clear All Steps", command=self.clear_all_steps).pack(pady=(0, 10))
+
+        self.refresh_steps()
+
+    def clear_all_steps(self):
+        self.steps = []
         self.refresh_steps()
 
     def _populate_widgets(self, event=None):
@@ -190,10 +214,44 @@ class CommandBuilder:
             widget.destroy()
 
         for idx, (step_type, val) in enumerate(self.steps):
-            box = tk.Frame(self.step_frame, borderwidth=1, relief="groove")
-            box.pack(fill=tk.X, pady=3)
-            label = tk.Label(box, text=f"{idx+1}. {step_type.upper()} - {val}", anchor="w", justify="left")
-            label.pack(fill=tk.X, padx=5, pady=2)
+            box = tk.Frame(self.step_frame, borderwidth=1, relief="ridge", bg="#f0f0f0")
+            box.pack(fill=tk.X, pady=2, padx=2)
+
+            label = tk.Label(
+                box,
+                text=f"{idx+1}. {step_type.upper()} - {val}",
+                anchor="w",
+                justify="left",
+                bg="#f0f0f0"
+            )
+            label.pack(fill=tk.X, padx=5, pady=4)
+
+            # Right-click menu
+            def make_context_menu(i):
+                menu = tk.Menu(box, tearoff=0)
+                menu.add_command(label="Delete Step", command=lambda: self._delete_step(i))
+                if i > 0:
+                    menu.add_command(label="Move Up", command=lambda: self._move_step(i, i - 1))
+                if i < len(self.steps) - 1:
+                    menu.add_command(label="Move Down", command=lambda: self._move_step(i, i + 1))
+                return menu
+
+            def show_context_menu(event, i=idx):
+                menu = make_context_menu(i)
+                menu.tk_popup(event.x_root, event.y_root)
+
+            label.bind("<Button-3>", lambda event, i=idx: show_context_menu(event, i))
+
+    def _delete_step(self, index):
+        if 0 <= index < len(self.steps):
+            del self.steps[index]
+            self.refresh_steps()
+
+    def _move_step(self, from_idx, to_idx):
+        if 0 <= from_idx < len(self.steps) and 0 <= to_idx < len(self.steps):
+            self.steps[from_idx], self.steps[to_idx] = self.steps[to_idx], self.steps[from_idx]
+            self.refresh_steps()
+
 
     def run_sequence(self):
         for step_type, val in self.steps:
