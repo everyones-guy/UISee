@@ -1,9 +1,8 @@
-from gui.command_builder import CommandBuilder
-from gui.test_queue import TestQueueBuilder
 
 from services.mqtt_service import MQTTService
 from ui_mapper_app import init_db, parse_sql_and_js, ask_user_for_folders
 from utils.ui_mapper_adapter import UIMQTTAdapter
+from services.parser_service import ParserService
 
 import sqlite3
 import tkinter as tk
@@ -11,10 +10,31 @@ from tkinter import ttk, messagebox, filedialog
 import os
 import json
 import re
-from dotenv import load_dotenv
 
-load_dotenv()
+from services.parser_service import ParserService
+
+from dotenv import load_dotenv
+from pathlib import Path
+
+env_path = Path("config/.env")
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    print(".env file not found at config/.env")
+
 DB_FILE = "ui_map.db"
+
+DEFAULT_TEST_CREDS = {
+    "host": "127.0.0.1",
+    "user": "pi"
+}
+
+DEFAULT_MQTT_CREDS = {
+    "host": "localhost",
+    "port": "1883",
+    "username": "guest",
+    "password": "guest"
+}
 
 class UIMapperGUI:
     def __init__(self, root):
@@ -37,6 +57,7 @@ class UIMapperGUI:
 
         # Unified MQTT + SSH command adapter
         self.mqtt_adapter = UIMQTTAdapter(self.test_creds)
+        self.parser_service = ParserService(self.root, self.conn)
 
         # State + buffers
         self.command_queue = []
@@ -86,11 +107,21 @@ class UIMapperGUI:
         ttk.Button(toolbar, text="Assemble Command", command=self.open_command_builder).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="Test Queue Builder", command=self.open_test_queue_builder).pack(side=tk.LEFT, padx=(5, 0))
 
+    # builders
     def open_command_builder(self):
-        CommandBuilder(self)
+        from gui.command_builder import CommandBuilder
+        self.command_builder_instance = CommandBuilder(self)  # store reference
+        self.command_builder_instance.open_builder()
 
     def open_test_queue_builder(self):
-        TestQueueBuilder(self)
+        from gui.test_queue import TestQueueBuilder
+        self.test_queue_instance = TestQueueBuilder(self)
+        self.test_queue_instance.build_tab()
+
+        # Optional: prompt user to import steps
+        if messagebox.askyesno("Import", "Import steps from Command Builder?"):
+            self.test_queue_instance.import_steps_from_command_builder()
+
 
     # ----- SSH + MQTT Controls -----
 
@@ -146,6 +177,8 @@ class UIMapperGUI:
         if isinstance(result, dict):
             return result.get("response", result.get("error", "Unknown result"))
         return result
+
+
 
 # ----- Entry Point -----
 if __name__ == '__main__':

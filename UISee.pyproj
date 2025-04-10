@@ -4,7 +4,7 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>d292c3f0-75e2-434e-9f68-9743889bed4c</ProjectGuid>
     <ProjectHome>.</ProjectHome>
-    <StartupFile>start_ui_mapper.py</StartupFile>
+    <StartupFile>gui\core.py</StartupFile>
     <SearchPath>
     </SearchPath>
     <WorkingDirectory>.</WorkingDirectory>

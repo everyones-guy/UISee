@@ -1,4 +1,5 @@
 # gui/test_queue.py
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
@@ -6,14 +7,38 @@ from datetime import datetime
 import subprocess
 import time
 
+from dotenv import load_dotenv
+from pathlib import Path
+
+env_path = Path("config/.env")
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    print(".env file not found at config/.env")
+
+DEFAULT_TEST_CREDS = {
+    "host": "127.0.0.1",
+    "user": "pi"
+}
+
+DEFAULT_MQTT_CREDS = {
+    "host": "localhost",
+    "port": "1883",
+    "username": "guest",
+    "password": "guest"
+}
 
 class TestQueueBuilder:
-    def __init__(self, parent, mqtt_adapter, test_creds, configured_inputs, output_console):
-        self.root = parent
-        self.mqtt_adapter = mqtt_adapter
-        self.test_creds = test_creds
-        self.configured_inputs = configured_inputs
-        self.output_console = output_console
+    def __init__(self, app_context):
+        self.app = app_context
+        self.root = app_context.root
+        self.mqtt_adapter = app_context.mqtt_adapter
+        self.test_creds = app_context.test_creds
+        self.configured_inputs = app_context.configured_inputs
+        self.output_console = app_context.output_console
+
+        # Optionally share command_builder steps
+        self.command_builder = getattr(app_context, "command_builder_instance", None)
 
         self.steps = []
         self.outputs = []
@@ -21,9 +46,9 @@ class TestQueueBuilder:
         self.toggle_vars = []
         self.selected_step_index = tk.IntVar(value=-1)
 
-    def open(self):
-        self.win = tk.Toplevel(self.root)
-        self.win.title("Test Queue Builder")
+    def build_tab(self):
+        self.win = ttk.Frame(self.root)
+        self.win.pack(fill=tk.BOTH, expand=True)
 
         self.repeat_var = tk.IntVar(value=1)
         self.skip_post_wait = tk.BooleanVar(value=False)
@@ -42,7 +67,6 @@ class TestQueueBuilder:
         self.scrollable_frame = tk.Frame(self.canvas)
 
         self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
@@ -67,17 +91,28 @@ class TestQueueBuilder:
         ttk.Checkbutton(controls, text="Skip Post-Wait", variable=self.skip_post_wait).pack(side=tk.LEFT)
 
         ttk.Button(self.win, text="Run Sequence with Timing", command=self._run_timed_sequence).pack(pady=5)
-        ttk.Button(self.win, text="Close", command=self.win.destroy).pack(pady=(0, 10))
+        ttk.Button(self.win, text="Delete Selected Step", command=self._delete_selected_step).pack(pady=5)
+
 
     def _add_example_steps(self):
         self.steps.append({"type": "mqtt", "command": "Page.Widgets.Pump1.IsSet=1", "pre_wait": 2, "post_wait": 2})
         self.outputs.append("[MQTT] Would publish to topic 'exec' with command: Page.Widgets.Pump1.IsSet=1")
-
         self.steps.append({"type": "wait", "value": 10})
         self.outputs.append("[WAIT] Would wait 10 seconds.")
-
         self.steps.append({"type": "ssh", "command": "ec simin a_tra1 55.5", "pre_wait": 2, "post_wait": 2})
         self.outputs.append("[SSH] Would send 'ec simin a_tra1 55.5' to remote controller")
+
+    def _delete_selected_step(self):
+        index = self.selected_step_index.get()
+        if 0 <= index < len(self.steps):
+            deleted = self.steps.pop(index)
+            self.outputs.pop(index)
+            self.selected_step_index.set(-1)
+            self._refresh_step_list()
+            messagebox.showinfo("Deleted", f"Removed step: {deleted.get('command', deleted.get('value', ''))}")
+        else:
+            messagebox.showwarning("No Selection", "Please click on a step first to delete.")
+
 
     def _refresh_step_list(self):
         for widget in self.scrollable_frame.winfo_children():
@@ -91,7 +126,13 @@ class TestQueueBuilder:
 
             frame = tk.Frame(self.scrollable_frame, borderwidth=1, relief="solid")
             frame.pack(fill=tk.X, padx=10, pady=5)
-            frame.bind("<Button-1>", lambda e, i=idx: self.selected_step_index.set(i))
+            def make_selector(index):
+                def select(event):
+                    self.selected_step_index.set(index)
+                    self._highlight_selected(index)
+                return select
+
+            frame.bind("<Button-1>", make_selector(idx))
 
             header = tk.Frame(frame)
             header.pack(fill=tk.X)
@@ -110,6 +151,18 @@ class TestQueueBuilder:
                         self.preview_widgets[index].pack_forget()
                 return toggle
 
+            def make_context_menu(index):
+                def show_context_menu(event):
+                    self.selected_step_index.set(index)
+                    self._highlight_selected(index)  # add this line
+                    menu = tk.Menu(self.root, tearoff=0)
+                    menu.add_command(label="Delete Step", command=self._delete_selected_step)
+                    menu.post(event.x_root, event.y_root)
+                return show_context_menu
+
+
+            frame.bind("<Button-3>", make_context_menu(idx))
+
             toggle_btn = ttk.Checkbutton(header, text="Show Output", variable=toggle_var, command=make_toggle(idx))
             toggle_btn.pack(side=tk.RIGHT, padx=5)
 
@@ -117,7 +170,11 @@ class TestQueueBuilder:
             preview.insert(tk.END, f"[PREVIEW] {typ} -- {val}")
             preview.configure(state="disabled")
             self.preview_widgets.append(preview)
-
+    # Add this method
+    def _highlight_selected(self, selected_index):
+        for i, child in enumerate(self.scrollable_frame.winfo_children()):
+            color = "#444" if i == selected_index else "#222"
+            child.configure(bg=color)
     def _collapse_all(self):
         for i in range(len(self.preview_widgets)):
             self.preview_widgets[i].pack_forget()
@@ -182,3 +239,22 @@ class TestQueueBuilder:
             with open(export_path, "w") as f:
                 json.dump(results, f, indent=2)
             messagebox.showinfo("Export Complete", f"Results exported to:\n{export_path}")
+
+    def import_steps_from_command_builder(self):
+        if self.command_builder and hasattr(self.command_builder, "steps"):
+            for typ, cmd in self.command_builder.steps:
+                if typ == "mqtt":
+                    self.steps.append({"type": "mqtt", "command": cmd, "pre_wait": 1, "post_wait": 1})
+                    self.outputs.append(f"[MQTT] Queued command: {cmd}")
+                elif typ == "wait":
+                    secs = int(cmd.split()[0])
+                    self.steps.append({"type": "wait", "value": secs})
+                    self.outputs.append(f"[WAIT] {secs} seconds")
+                elif typ == "ssh":
+                    self.steps.append({"type": "ssh", "command": cmd, "pre_wait": 1, "post_wait": 1})
+                    self.outputs.append(f"[SSH] Queued: {cmd}")
+            self._refresh_step_list()
+            messagebox.showinfo("Imported", "Steps imported from Command Builder.")
+        else:
+            messagebox.showwarning("No Steps", "No Command Builder steps available.")
+

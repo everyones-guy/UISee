@@ -1,4 +1,4 @@
-# gui/parser_service.py
+# services/parser_service.py
 
 import re
 import json
