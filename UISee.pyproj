@@ -25,6 +25,7 @@
     <Compile Include="gui\command_builder.py" />
     <Compile Include="gui\core.py" />
     <Compile Include="gui\mirror_mode.py" />
+    <Compile Include="services\parser_service.py" />
     <Compile Include="gui\preview_full_page.py" />
     <Compile Include="gui\test_queue.py" />
     <Compile Include="gui\toolbar_controls.py" />
@@ -38,7 +39,6 @@
     <Compile Include="UISee.py" />
     <Compile Include="ui_mapper_app.py" />
     <Compile Include="services\custom_logger.py" />
-    <Compile Include="utils\parser.py" />
     <Compile Include="utils\ui_mapper_adapter.py" />
     <Compile Include="utils\__init__.py" />
   </ItemGroup>

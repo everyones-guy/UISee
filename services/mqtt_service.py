@@ -5,7 +5,7 @@ import threading
 import socket
 from dotenv import load_dotenv
 from paho.mqtt.client import Client
-from utils.custom_logger import CustomLogger
+from services.custom_logger import CustomLogger
 
 # Load environment variables from .env
 load_dotenv()

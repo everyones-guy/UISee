@@ -1,4 +1,17 @@
-def connect_ssh(self):
+# gui/ssh_service.py
+import tkinter as tk
+from tkinter import ttk, messagebox
+import subprocess
+
+class SSHService:
+    def __init__(self, root, conn, output_console):
+        self.root = root
+        self.conn = conn
+        self.output_console = output_console
+        self.ssh_process = None
+        self.test_creds = {"host": "", "user": ""}
+
+    def connect(self):
         win = tk.Toplevel(self.root)
         win.title("SSH to Test Controller")
 
@@ -64,10 +77,10 @@ def connect_ssh(self):
         ttk.Button(win, text="Connect", command=launch_ssh).pack(pady=5)
         ttk.Button(win, text="Save Connection", command=save_connection).pack(pady=5)
 
-    def close_ssh(self):
+    def close(self):
         if self.ssh_process:
             self.ssh_process.terminate()
             self.output_console.insert(tk.END, "\n[SSH Closed] Connection terminated.\n")
             self.ssh_process = None
         else:
-            messagebox.showinfo("No Active Connection", "There is no SSH connedction to close.")
+            messagebox.showinfo("No Active Connection", "There is no SSH connection to close.")

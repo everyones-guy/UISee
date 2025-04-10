@@ -17,6 +17,8 @@ from .core import UIMapperGUI
 from .command_builder import CommandBuilder
 from .test_queue import TestQueueBuilder
 from .toolbar_controls import ToolbarControls
-from .widget_modal import open_widget_modal
+from .widget_modal import WidgetModal   
 from .mirror_mode import MirrorModeController
+from .preview_full_page import PreviewPage
+
 # Add more imports here as more modules are created (e.g., mirror_mode, preview_page, etc.)
