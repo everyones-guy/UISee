@@ -115,66 +115,76 @@ class TestQueueBuilder:
 
 
     def _refresh_step_list(self):
+        # Clear all UI step widgets
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
+
+        # Clear step-specific tracking lists
         self.preview_widgets.clear()
         self.toggle_vars.clear()
+
+        # Reset selected index if out of range
+        if self.selected_step_index.get() >= len(self.steps):
+            self.selected_step_index.set(-1)
+
+        def highlight_selected(selected_index):
+            for i, frame in enumerate(self.scrollable_frame.winfo_children()):
+                bg = "#333" if i == selected_index else "#222"
+                frame.configure(bg=bg)
+                for child in frame.winfo_children():
+                    if isinstance(child, tk.Frame) or isinstance(child, tk.Label):
+                        child.configure(bg=bg)
 
         for idx, step in enumerate(self.steps):
             typ = step.get("type", "").upper()
             val = step.get("command", step.get("value", ""))
 
-            frame = tk.Frame(self.scrollable_frame, borderwidth=1, relief="solid")
+            frame = tk.Frame(self.scrollable_frame, borderwidth=1, relief="solid", background="#222")
             frame.pack(fill=tk.X, padx=10, pady=5)
-            def make_selector(index):
-                def select(event):
-                    self.selected_step_index.set(index)
-                    self._highlight_selected(index)
-                return select
 
-            frame.bind("<Button-1>", make_selector(idx))
-
-            header = tk.Frame(frame)
+            header = tk.Frame(frame, bg="#222")
             header.pack(fill=tk.X)
 
-            label = tk.Label(header, text=f"{idx+1}. {typ}: {val}", font=("Arial", 10, "bold"))
+            label = tk.Label(header, text=f"{idx+1}. {typ}: {val}", font=("Arial", 10, "bold"), bg="#222", fg="white")
             label.pack(side=tk.LEFT, padx=5, pady=5)
 
             toggle_var = tk.BooleanVar(value=False)
             self.toggle_vars.append(toggle_var)
 
-            def make_toggle(index):
-                def toggle():
-                    if self.toggle_vars[index].get():
-                        self.preview_widgets[index].pack(fill=tk.X, padx=10, pady=(0, 10))
-                    else:
-                        self.preview_widgets[index].pack_forget()
-                return toggle
-
-            def make_context_menu(index):
-                def show_context_menu(event):
-                    self.selected_step_index.set(index)
-                    self._highlight_selected(index)  # add this line
-                    menu = tk.Menu(self.root, tearoff=0)
-                    menu.add_command(label="Delete Step", command=self._delete_selected_step)
-                    menu.post(event.x_root, event.y_root)
-                return show_context_menu
-
-
-            frame.bind("<Button-3>", make_context_menu(idx))
-
-            toggle_btn = ttk.Checkbutton(header, text="Show Output", variable=toggle_var, command=make_toggle(idx))
-            toggle_btn.pack(side=tk.RIGHT, padx=5)
-
             preview = tk.Text(frame, height=5, bg="#111", fg="#0f0", insertbackground="white")
             preview.insert(tk.END, f"[PREVIEW] {typ} -- {val}")
             preview.configure(state="disabled")
             self.preview_widgets.append(preview)
-    # Add this method
+
+            toggle_btn = ttk.Checkbutton(header, text="Show Output", variable=toggle_var, command=lambda i=idx: preview.pack(fill=tk.X, padx=10, pady=(0, 10)) if toggle_var.get() else preview.pack_forget())
+            toggle_btn.pack(side=tk.RIGHT, padx=5)
+
+            # Selector logic
+            def select(event, i=idx):
+                self.selected_step_index.set(i)
+                highlight_selected(i)
+
+            def right_click(event, i=idx):
+                self.selected_step_index.set(i)
+                highlight_selected(i)
+                menu = tk.Menu(self.root, tearoff=0)
+                menu.add_command(label="Delete Step", command=self._delete_selected_step)
+                menu.post(event.x_root, event.y_root)
+
+            # Bind all clickable areas
+            for widget in [frame, header, label]:
+                widget.bind("<Button-1>", lambda e, i=idx: select(e, i))
+                widget.bind("<Button-3>", lambda e, i=idx: right_click(e, i))
+
+
+
     def _highlight_selected(self, selected_index):
         for i, child in enumerate(self.scrollable_frame.winfo_children()):
-            color = "#444" if i == selected_index else "#222"
-            child.configure(bg=color)
+            child.configure(bg="#444" if i == selected_index else "#222")
+            for sub in child.winfo_children():
+                if isinstance(sub, (tk.Frame, tk.Label)):
+                    sub.configure(bg="#444" if i == selected_index else "#222")
+
     def _collapse_all(self):
         for i in range(len(self.preview_widgets)):
             self.preview_widgets[i].pack_forget()

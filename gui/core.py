@@ -3,6 +3,8 @@ from services.mqtt_service import MQTTService
 from ui_mapper_app import init_db, parse_sql_and_js, ask_user_for_folders
 from utils.ui_mapper_adapter import UIMQTTAdapter
 from services.parser_service import ParserService
+from ui_mapper_app import init_db, parse_sql_and_js, ask_user_for_folders
+
 
 import sqlite3
 import tkinter as tk
@@ -178,6 +180,24 @@ class UIMapperGUI:
             return result.get("response", result.get("error", "Unknown result"))
         return result
 
+    def reparse_files(self):
+        confirm = messagebox.askyesno("Reparse Files", "This will clear and reload the database.\nContinue?")
+        if not confirm:
+            return
+
+        try:
+            sql_path, js_path = ask_user_for_folders()
+            init_db()
+            parse_sql_and_js(sql_path, js_path)
+            messagebox.showinfo("Success", "Files re-parsed and database updated.")
+
+            # Optional: refresh UI if needed
+            if hasattr(self, "load_pages"):
+                self.load_pages()
+            if hasattr(self, "apply_filters"):
+                self.apply_filters()
+        except Exception as e:
+            messagebox.showerror("Parse Error", f"An error occurred:\n{str(e)}")
 
 
 # ----- Entry Point -----
