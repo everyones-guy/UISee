@@ -49,14 +49,33 @@ class TestQueueBuilder:
     def build_tab(self):
         self.win = ttk.Frame(self.root)
         self.win.pack(fill=tk.BOTH, expand=True)
-
-        self.repeat_var = tk.IntVar(value=1)
-        self.skip_post_wait = tk.BooleanVar(value=False)
-        self.logging_enabled = tk.BooleanVar(value=False)
-
-        self._build_main_ui()
+        self._build_controls()
+        self._build_step_area()
         self._add_example_steps()
         self._refresh_step_list()
+
+    def _build_controls(self):
+        controls = ttk.Frame(self.win)
+        controls.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Button(controls, text="Run Sequence", command=self._run_timed_sequence).pack(side=tk.LEFT)
+        ttk.Button(controls, text="Delete Step", command=self._delete_selected_step).pack(side=tk.LEFT, padx=5)
+        ttk.Button(controls, text="Save as Template", command=self._save_as_template).pack(side=tk.LEFT, padx=5)
+        ttk.Button(controls, text="Load Template", command=self._load_template).pack(side=tk.LEFT, padx=5)
+
+    def _build_step_area(self):
+        container = ttk.Frame(self.win)
+        container.pack(fill=tk.BOTH, expand=True)
+        self.canvas = tk.Canvas(container)
+        self.scrollable_frame = ttk.Frame(self.canvas)
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.scrollable_frame.bind("<ButtonRelease-1>", self._handle_drop)
+        self.drag_start_index = None
+
 
     def _build_main_ui(self):
         container = tk.Frame(self.win)
@@ -95,12 +114,9 @@ class TestQueueBuilder:
 
 
     def _add_example_steps(self):
-        self.steps.append({"type": "mqtt", "command": "Page.Widgets.Pump1.IsSet=1", "pre_wait": 2, "post_wait": 2})
-        self.outputs.append("[MQTT] Would publish to topic 'exec' with command: Page.Widgets.Pump1.IsSet=1")
+        self.steps.append({"type": "mqtt", "command": "Page.Widgets.Pump1.IsSet=1"})
         self.steps.append({"type": "wait", "value": 10})
-        self.outputs.append("[WAIT] Would wait 10 seconds.")
-        self.steps.append({"type": "ssh", "command": "ec simin a_tra1 55.5", "pre_wait": 2, "post_wait": 2})
-        self.outputs.append("[SSH] Would send 'ec simin a_tra1 55.5' to remote controller")
+        self.steps.append({"type": "ssh", "command": "ec simin a_tra1 55.5"})
 
     def _delete_selected_step(self):
         index = self.selected_step_index.get()
@@ -115,67 +131,73 @@ class TestQueueBuilder:
 
 
     def _refresh_step_list(self):
-        # Clear all UI step widgets
         for widget in self.scrollable_frame.winfo_children():
             widget.destroy()
 
-        # Clear step-specific tracking lists
-        self.preview_widgets.clear()
-        self.toggle_vars.clear()
-
-        # Reset selected index if out of range
-        if self.selected_step_index.get() >= len(self.steps):
-            self.selected_step_index.set(-1)
-
-        def highlight_selected(selected_index):
-            for i, frame in enumerate(self.scrollable_frame.winfo_children()):
-                bg = "#333" if i == selected_index else "#222"
-                frame.configure(bg=bg)
-                for child in frame.winfo_children():
-                    if isinstance(child, tk.Frame) or isinstance(child, tk.Label):
-                        child.configure(bg=bg)
-
         for idx, step in enumerate(self.steps):
-            typ = step.get("type", "").upper()
-            val = step.get("command", step.get("value", ""))
+            frame = tk.Frame(self.scrollable_frame, borderwidth=1, relief="raised", bg="#222")
+            frame.pack(fill=tk.X, padx=5, pady=2)
+            frame.bind("<Button-1>", lambda e, i=idx: self._on_drag_start(i))
+            frame.bind("<B1-Motion>", self._on_drag_motion)
 
-            frame = tk.Frame(self.scrollable_frame, borderwidth=1, relief="solid", background="#222")
-            frame.pack(fill=tk.X, padx=10, pady=5)
+            label_text = f"{step['type'].upper()}: {step.get('command', step.get('value', ''))}"
+            entry_var = tk.StringVar(value=step.get("command", step.get("value", "")))
 
-            header = tk.Frame(frame, bg="#222")
-            header.pack(fill=tk.X)
+            def update_val(var, i=idx):
+                if "command" in self.steps[i]:
+                    self.steps[i]["command"] = var.get()
+                else:
+                    self.steps[i]["value"] = int(var.get()) if var.get().isdigit() else var.get()
 
-            label = tk.Label(header, text=f"{idx+1}. {typ}: {val}", font=("Arial", 10, "bold"), bg="#222", fg="white")
-            label.pack(side=tk.LEFT, padx=5, pady=5)
+            entry_var.trace_add("write", lambda *args, var=entry_var, i=idx: update_val(var, i))
 
-            toggle_var = tk.BooleanVar(value=False)
-            self.toggle_vars.append(toggle_var)
+            lbl = tk.Label(frame, text=step["type"].upper(), bg="#222", fg="white")
+            lbl.pack(side=tk.LEFT, padx=5)
+            ent = ttk.Entry(frame, textvariable=entry_var, width=60)
+            ent.pack(side=tk.LEFT, padx=5)
 
-            preview = tk.Text(frame, height=5, bg="#111", fg="#0f0", insertbackground="white")
-            preview.insert(tk.END, f"[PREVIEW] {typ} -- {val}")
-            preview.configure(state="disabled")
-            self.preview_widgets.append(preview)
+    def _on_drag_start(self, index):
+        self.drag_start_index = index
 
-            toggle_btn = ttk.Checkbutton(header, text="Show Output", variable=toggle_var, command=lambda i=idx: preview.pack(fill=tk.X, padx=10, pady=(0, 10)) if toggle_var.get() else preview.pack_forget())
-            toggle_btn.pack(side=tk.RIGHT, padx=5)
+    def _on_drag_motion(self, event):
+        y = event.y_root - self.scrollable_frame.winfo_rooty()
+        height = self.scrollable_frame.winfo_height()
+        step_height = height // max(1, len(self.steps))
+        index = y // step_height
+        index = max(0, min(len(self.steps) - 1, index))
+        if index != self.drag_start_index:
+            self.steps[self.drag_start_index], self.steps[index] = self.steps[index], self.steps[self.drag_start_index]
+            self.drag_start_index = index
+            self._refresh_step_list()
 
-            # Selector logic
-            def select(event, i=idx):
-                self.selected_step_index.set(i)
-                highlight_selected(i)
+    def _handle_drop(self, event):
+        self.drag_start_index = None
 
-            def right_click(event, i=idx):
-                self.selected_step_index.set(i)
-                highlight_selected(i)
-                menu = tk.Menu(self.root, tearoff=0)
-                menu.add_command(label="Delete Step", command=self._delete_selected_step)
-                menu.post(event.x_root, event.y_root)
+    def _delete_selected_step(self):
+        idx = self.selected_step_index.get()
+        if 0 <= idx < len(self.steps):
+            self.steps.pop(idx)
+            self.selected_step_index.set(-1)
+            self._refresh_step_list()
 
-            # Bind all clickable areas
-            for widget in [frame, header, label]:
-                widget.bind("<Button-1>", lambda e, i=idx: select(e, i))
-                widget.bind("<Button-3>", lambda e, i=idx: right_click(e, i))
+    def _save_as_template(self):
+        path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON Files", "*.json")])
+        if path:
+            with open(path, "w") as f:
+                json.dump(self.steps, f, indent=2)
+            messagebox.showinfo("Saved", f"Template saved to:\n{path}")
 
+    def _load_template(self):
+        path = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json")])
+        if path:
+            with open(path, "r") as f:
+                self.steps = json.load(f)
+            self._refresh_step_list()
+
+    def _run_timed_sequence(self):
+        for step in self.steps:
+            print(f"Running: {step}")
+            time.sleep(1)  # Simulated timing
 
 
     def _highlight_selected(self, selected_index):
@@ -228,8 +250,14 @@ class TestQueueBuilder:
                         result["status"] = "waited"
                         result["output"] = f"Waited {step['value']} seconds"
                     elif step["type"] == "mqtt":
-                        r = self.mqtt_adapter.send_command_and_wait(*step["command"].split("="))
-                        result.update(r)
+                        if "=" in step["command"]:
+                            path, value = step["command"].split("=", 1)
+                            r = self.mqtt_adapter.send_command_and_wait(path.strip(), value.strip())
+                            result.update(r)
+                        else:
+                            result["status"] = "invalid"
+                            result["output"] = f"Invalid MQTT command: {step['command']}"
+
                     elif step["type"] == "ssh":
                         ssh_cmd = f"ssh {self.test_creds['user']}@{self.test_creds['host']} \"{step['command']}\""
                         proc = subprocess.run(ssh_cmd, shell=True, capture_output=True, text=True)
@@ -244,7 +272,12 @@ class TestQueueBuilder:
                 result["duration_sec"] = (datetime.strptime(result["end"], "%Y-%m-%d %H:%M:%S") - start_time).total_seconds()
                 results.append(result)
 
-        export_path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON Files", "*.json")])
+        export_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON Files", "*.json")],
+            initialfile=f"test_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
+
         if export_path:
             with open(export_path, "w") as f:
                 json.dump(results, f, indent=2)
