@@ -1,4 +1,15 @@
-def preview_full_page(self):
+# gui/preview_page.py
+import tkinter as tk
+from tkinter import ttk
+
+class PreviewPage:
+    def __init__(self, root, conn, page_name, bvt_callback=None):
+        self.root = root
+        self.conn = conn
+        self.page_name = page_name
+        self.bvt_callback = bvt_callback
+
+    def open(self):
         preview_win = tk.Toplevel(self.root)
         preview_win.title(f"Preview: {self.page_name}")
 
@@ -19,14 +30,16 @@ def preview_full_page(self):
         """, (self.page_name,))
         widgets = cur.fetchall()
 
-        row = 0
-        for db_id, widget_type, widget_name in widgets:
+        for row, (db_id, widget_type, widget_name) in enumerate(widgets):
             display = widget_name or f"Widget_{db_id}"
             widget_type = widget_type.lower()
 
             if widget_type == "button":
-                w = ttk.Button(scroll_frame, text=display,
-                               command=lambda name=widget_name: self.generate_bvt_sequence(name))
+                w = ttk.Button(
+                    scroll_frame,
+                    text=display,
+                    command=(lambda name=widget_name: self.bvt_callback(name)) if self.bvt_callback else None
+                )
             elif widget_type == "textbox":
                 w = ttk.Entry(scroll_frame)
                 w.insert(0, display)
@@ -34,5 +47,5 @@ def preview_full_page(self):
                 w = ttk.Label(scroll_frame, text=display)
             else:
                 w = ttk.Label(scroll_frame, text=f"[{widget_type}] {display}")
+
             w.grid(row=row, column=0, padx=10, pady=5, sticky="w")
-            row += 1

@@ -1,4 +1,3 @@
-
 import os
 import sys
 import argparse
@@ -11,19 +10,17 @@ import json
 import time
 
 from ui_mapper_app import init_db, parse_sql_and_js
-import UISee
+from ui.ui_see_main import UIMapperGUI
 
 DB_FILE = "ui_map.db"
 LOG_DIR = "logs"
 SNAPSHOT_DIR = "snapshots"
 
-# Global credentials cache
 auto_login_credentials = {}
 
 def ensure_directories():
     for folder in [LOG_DIR, SNAPSHOT_DIR]:
-        if not os.path.exists(folder):
-            os.makedirs(folder)
+        os.makedirs(folder, exist_ok=True)
 
 def show_splash(root, progress_callback):
     splash = Toplevel(root)
@@ -67,9 +64,9 @@ def setup_logging():
     return log_path
 
 def save_widget_tree_snapshot():
-    conn = None
+    import sqlite3
     try:
-        conn = UISee.sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE)
         cur = conn.cursor()
         cur.execute("SELECT page_name, widget_type, widget_name, widget_index FROM widgets")
         rows = cur.fetchall()
@@ -91,31 +88,10 @@ def save_widget_tree_snapshot():
         if conn:
             conn.close()
 
-#def create_windows_shortcut(script_path):
-#    try:
-#        import winshell
-#        from win32com.client import Dispatch
-#
-#        desktop = winshell.desktop()
-#        shortcut_path = os.path.join(desktop, "UI-See.lnk")
-#
-#        shell = Dispatch('WScript.Shell')
-#        shortcut = shell.CreateShortCut(shortcut_path)
-#        shortcut.TargetPath = sys.executable
-#        shortcut.Arguments = f'"{script_path}"'
-#        shortcut.WorkingDirectory = os.path.dirname(script_path)
-#        shortcut.IconLocation = sys.executable
-#        shortcut.save()
-#
-#        logging.info(f"Shortcut created: {shortcut_path}")
-#        messagebox.showinfo("Shortcut Created", f"Shortcut created on desktop:\n{shortcut_path}")
-#    except Exception as e:
-#        logging.warning(f"Shortcut creation failed: {e}")
-#        messagebox.showwarning("Shortcut Error", str(e))
-
 def auto_login_if_needed(app):
+    import sqlite3
     try:
-        conn = UISee.sqlite3.connect(DB_FILE)
+        conn = sqlite3.connect(DB_FILE)
         cur = conn.cursor()
         cur.execute("SELECT value FROM page_details WHERE tag='Name' AND value='login'")
         result = cur.fetchone()
@@ -138,7 +114,6 @@ def auto_login_if_needed(app):
 def main():
     parser = argparse.ArgumentParser(description="Launch the UI Structure Mapper")
     parser.add_argument("--reparse", action="store_true", help="Force re-parse of SQL and JS folders")
-    parser.add_argument("--shortcut", action="store_true", help="Create desktop shortcut")
     args = parser.parse_args()
 
     setup_logging()
@@ -165,21 +140,15 @@ def main():
         def launch_gui():
             root.deiconify()
             close_splash()
-            app = UISee.UIMapperGUI(root)
+            app = UIMapperGUI(root)
             auto_login_if_needed(app)
             app.load_pages()
             logging.info("UI loaded.")
-            
+
         threading.Thread(target=backend_task).start()
 
     show_splash(root, post_splash)
-
-#    if args.shortcut:
-#        create_windows_shortcut(os.path.abspath(__file__))
-
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()
-

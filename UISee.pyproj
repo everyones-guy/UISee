@@ -24,9 +24,10 @@
   <ItemGroup>
     <Compile Include="gui\command_builder.py" />
     <Compile Include="gui\core.py" />
-    <Compile Include="gui\preview.py" />
+    <Compile Include="gui\mirror_mode.py" />
+    <Compile Include="gui\preview_full_page.py" />
     <Compile Include="gui\test_queue.py" />
-    <Compile Include="gui\toolbar.py" />
+    <Compile Include="gui\toolbar_controls.py" />
     <Compile Include="gui\widget_modal.py" />
     <Compile Include="gui\__init__.py" />
     <Compile Include="main.py" />
