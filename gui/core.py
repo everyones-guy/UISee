@@ -112,6 +112,10 @@ class UIMapperGUI:
         ttk.Button(toolbar, text="Send SIMIN", command=self.send_simin_command).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Open New Test Queue", command=self.open_test_queue_builder).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Close All Queues", command=self.close_all_test_queues).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="Connect to Controller", command=self.connect_ssh).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="Subscribe to MQTT", command=self.subscribe_mqtt).pack(side=tk.LEFT, padx=(0, 5))
+
+
 
 
 

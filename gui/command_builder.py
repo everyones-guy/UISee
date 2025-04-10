@@ -69,9 +69,9 @@ class CommandBuilder:
 
         ttk.Label(row, text="Page:").pack(side=tk.LEFT)
 
-        page_combo = ttk.Combobox(row, values=self.available_pages, textvariable=self.selected_page, state="readonly")
-        page_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        page_combo.bind("<<ComboboxSelected>>", self._populate_widgets)
+        self.page_combo = ttk.Combobox(row, values=self.available_pages, textvariable=self.selected_page, state="readonly")
+        self.page_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self.page_combo.bind("<<ComboboxSelected>>", self._populate_widgets)
 
         # Parse button next to the Page dropdown
         ttk.Button(row, text="Parse", width=8, command=self._reparse_and_reload_pages).pack(side=tk.LEFT)
@@ -211,11 +211,23 @@ class CommandBuilder:
             self.value.set("")
             self.widget_combo['values'] = []
             self.property_combo['values'] = []
+            # After parsing completes:
+            self._refresh_page_dropdowns()
+
 
             messagebox.showinfo("Success", "Files re-parsed and data reloaded.")
 
         except Exception as e:
             messagebox.showerror("Parse Error", f"Failed to parse:\n{str(e)}")
+
+    def _refresh_page_dropdowns(self):
+        self.available_pages = self.parser_service.get_all_pages()
+        self.page_combo['values'] = self.available_pages
+        self.page_combo.set('')
+        self.widget_combo.set('')
+        self.property_combo.set('')
+        self.widget_combo['values'] = []
+        self.property_combo['values'] = []
 
 
     def add_ssh_step(self):
