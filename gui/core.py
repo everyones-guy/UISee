@@ -109,6 +109,9 @@ class UIMapperGUI:
         ttk.Button(toolbar, text="Assemble Command", command=self.open_command_builder).pack(side=tk.LEFT)
         ttk.Button(toolbar, text="Test Queue Builder", command=self.open_test_queue_builder).pack(side=tk.LEFT, padx=(5, 0))
         ttk.Button(toolbar, text="Send SIMIN", command=self.send_simin_command).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="Open New Test Queue", command=self.open_test_queue_builder).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="Close All Queues", command=self.close_all_test_queues).pack(side=tk.LEFT, padx=(0, 5))
+
 
 
     # builders
@@ -118,19 +121,39 @@ class UIMapperGUI:
         self.command_builder_instance.open_builder()
 
     def open_test_queue_builder(self):
-        import tkinter as tk
         from gui.test_queue import TestQueueBuilder
+        from datetime import datetime
 
+        # Create a new Toplevel window
         new_win = tk.Toplevel(self.root)
-        new_win.title("Test Queue Builder")
+        new_win.title(f"Test Queue - {datetime.now().strftime('%H:%M:%S')}")
 
+        # Build a new TestQueueBuilder instance tied to the new window
         builder = TestQueueBuilder(self)
-        builder.root = new_win  # assign this new window
+        builder.root = new_win
         builder.build_tab()
 
-        # prompt user to import steps
-        if messagebox.askyesno("Import", "Import steps from Command Builder?"):
-            self.test_queue_instance.import_steps_from_command_builder()
+        # Track multiple windows
+        if not hasattr(self, 'test_queue_windows'):
+            self.test_queue_windows = []
+        self.test_queue_windows.append(builder)
+
+        # Optionally load from Command Builder if user agrees
+        if hasattr(self, "command_builder_instance"):
+            if messagebox.askyesno("Import", "Import steps from Command Builder?"):
+                builder.import_steps_from_command_builder()
+
+    def close_all_test_queues(self):
+        if hasattr(self, "test_queue_windows"):
+            for q in self.test_queue_windows:
+                try:
+                    q.root.destroy()
+                except Exception as e:
+                    print(f"Error closing window: {e}")
+            self.test_queue_windows.clear()
+            self.output_console.insert(tk.END, "[INFO] All Test Queue windows closed.\n")
+        else:
+            self.output_console.insert(tk.END, "[INFO] No Test Queue windows to close.\n")
 
 
     # ----- SSH + MQTT Controls -----

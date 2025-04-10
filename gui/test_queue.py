@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 import subprocess
 import time
+import threading
 
 from dotenv import load_dotenv
 from pathlib import Path
@@ -45,6 +46,7 @@ class TestQueueBuilder:
         self.preview_widgets = []
         self.toggle_vars = []
         self.selected_step_index = tk.IntVar(value=-1)
+        self.last_template_path = None
 
     def build_tab(self):
         self.win = ttk.Frame(self.root)
@@ -178,11 +180,19 @@ class TestQueueBuilder:
     def _handle_drop(self, event):
         self.drag_start_index = None
 
+    def _delete_selected_step(self):
+        idx = self.selected_step_index.get()
+        if 0 <= idx < len(self.steps):
+            self.steps.pop(idx)
+            self.selected_step_index.set(-1)
+            self._refresh_step_list()
+
     def _save_as_template(self):
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON Files", "*.json")])
         if path:
             with open(path, "w") as f:
                 json.dump(self.steps, f, indent=2)
+            self.last_template_path = path
             messagebox.showinfo("Saved", f"Template saved to:\n{path}")
 
     def _load_template(self):
@@ -190,13 +200,14 @@ class TestQueueBuilder:
         if path:
             with open(path, "r") as f:
                 self.steps = json.load(f)
+            self.last_template_path = path
             self._refresh_step_list()
             self.progress["maximum"] = len(self.steps)
             self.progress["value"] = 0
 
 
     def run_sequence_threaded(self):
-        import threading
+        threading.Thread(target=self._run_timed_sequence, daemon=True).start()
         t = threading.Thread(target=self._run_timed_sequence, daemon=True)
         t.start()
 
@@ -233,12 +244,10 @@ class TestQueueBuilder:
 
     def _run_timed_sequence(self):
         results = []
-        repeat_count = max(1, self.repeat_var.get())
-
+        repeat_count = max(1, getattr(self, "repeat_var", tk.IntVar(value=1)).get())
         total = len(self.steps) * repeat_count
         self.progress["maximum"] = total
         self.progress["value"] = 0
-
         for repeat_index in range(repeat_count):
             for step in self.steps:
                 start_time = datetime.now()
@@ -271,21 +280,18 @@ class TestQueueBuilder:
                 except Exception as e:
                     result["status"] = "error"
                     result["output"] = str(e)
-                if not self.skip_post_wait.get():
+                if not getattr(self, "skip_post_wait", tk.BooleanVar(value=False)).get():
                     time.sleep(step.get("post_wait", 2))
                 result["end"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 result["duration_sec"] = (datetime.strptime(result["end"], "%Y-%m-%d %H:%M:%S") - start_time).total_seconds()
                 results.append(result)
-
                 self.progress["value"] += 1
                 self.progress.update()
-
         export_path = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("JSON Files", "*.json")],
             initialfile=f"test_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         )
-
         if export_path:
             with open(export_path, "w") as f:
                 json.dump(results, f, indent=2)
