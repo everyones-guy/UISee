@@ -136,8 +136,8 @@ class UIMapperGUI:
 
     def open_command_builder(self):
         from gui.command_builder import CommandBuilder
-        builder = CommandBuilder(self.root, self.mqtt_adapter, [], self.test_creds, self.conn, self.configured_inputs, self.output_console)
-        builder.open_command_builder()
+        builder = CommandBuilder(self)
+        builder.open_builder()
 
     def open_test_queue_builder(self):
         from gui.test_queue import TestQueueBuilder
