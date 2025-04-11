@@ -12,6 +12,7 @@ import time
 import sqlite3
 
 from db_bootstrap import init_db, parse_sql_and_js
+
 from gui.core import UIMapperGUI
 
 DB_FILE = "ui_map.db"
@@ -61,12 +62,8 @@ class UISeeLauncher:
         callback(close_splash)
 
     def ask_user_for_folders(self):
-        sql_folder = filedialog.askdirectory(title="Select SQL Folder (UIPages)")
-        js_folder = filedialog.askdirectory(title="Select JS Folder (Scripts)")
-        if not sql_folder or not js_folder:
-            messagebox.showerror("Missing Folder", "You must select both folders to proceed.")
-            return None, None
-        return sql_folder, js_folder
+        from db_bootstrap import ask_user_for_folders
+        return ask_user_for_folders()
 
     def save_widget_tree_snapshot(self):
         try:
