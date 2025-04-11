@@ -27,10 +27,10 @@ else:
 DB_FILE = "ui_map.db"
 
 class UIMapperGUI:
-    def __init__(self, root):
+    def __init__(self, root, conn):
         self.root = root
         self.root.title("UI Structure Mapper")
-        self.conn = sqlite3.connect(DB_FILE)
+        self.conn = conn
 
         self.test_creds = {
             "host": os.getenv("SSH_HOST", ""),
@@ -286,9 +286,15 @@ class UIMapperGUI:
 # ---------- Entry Point ----------
 if __name__ == '__main__':
     sql_path, js_path = ask_user_for_folders()
-    init_db()
-    parse_sql_and_js(sql_path, js_path)
+
+    db_path = "ui_map.db"
+    conn = sqlite3.connect(db_path)
+
+    init_db(conn=conn)
+    parse_sql_and_js(sql_path, js_path, conn=conn)
 
     root = tk.Tk()
-    app = UIMapperGUI(root)
+    app = UIMapperGUI(root, conn)
+    app.conn = conn  # make sure app uses the already-initialized connection
     root.mainloop()
+
