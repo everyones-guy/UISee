@@ -1,19 +1,54 @@
-# gui/ssh_service.py
+# services/ssh_service.py
+
 import tkinter as tk
-from tkinter import ttk, messagebox
-import subprocess
+from tkinter import ttk, messagebox, simpledialog
+import paramiko
+import threading
+import json
+from pathlib import Path
+
+CRED_FILE = Path("config/ssh_credentials.json")
+KEY_HISTORY_FILE = Path("config/ssh_keys.json")
+
+if not KEY_HISTORY_FILE.parent.exists():
+    KEY_HISTORY_FILE.parent.mkdir(parents=True)
+
+def load_key_history():
+    if KEY_HISTORY_FILE.exists():
+        try:
+            return json.load(open(KEY_HISTORY_FILE))
+        except:
+            return []
+    return []
+
+def save_key_to_history(path):
+    history = load_key_history()
+    if path not in history:
+        history.insert(0, path)
+        with open(KEY_HISTORY_FILE, "w") as f:
+            json.dump(history[:10], f)
 
 class SSHService:
     def __init__(self, root, conn, output_console):
         self.root = root
         self.conn = conn
         self.output_console = output_console
-        self.ssh_process = None
+        self.ssh_client = None
         self.test_creds = {"host": "", "user": ""}
+        self.session_passphrase = None # clear when reloaded
 
     def connect(self):
         win = tk.Toplevel(self.root)
         win.title("SSH to Test Controller")
+
+        if CRED_FILE.exists():
+            try:
+                creds = json.load(open(CRED_FILE))
+                host_entry.insert(0, creds.get("host", ""))
+                user_entry.insert(0, creds.get("user", ""))
+                pass_entry.insert(0, creds.get("password", ""))
+            except Exception:
+                pass # fail silently
 
         cur = self.conn.cursor()
         cur.execute("""
@@ -46,6 +81,35 @@ class SSHService:
         user_entry = ttk.Entry(win)
         user_entry.pack(fill=tk.X)
 
+        ttk.Label(win, text="Password:").pack(anchor="w")
+        pass_entry = ttk.Entry(win, show="*")
+        pass_entry.pack(fill=tk.X)
+
+        use_key_var = tk.BooleanVar(value=False)
+
+        key_frame = ttk.Frame(win)
+        key_frame.pack(fill=tk.X, pady=(5, 0))
+
+        ttk.Checkbutton(key_frame, text="Use Private Key", variable=use_key_var).pack(side=tk.LEFT)
+
+        key_history = load_key_history()
+        key_var = tk.StringVar(value=key_history[0] if key_history else str(Path.home() / ".ssh" / "id_rsa"))
+
+        key_dropdown = ttk.Combobox(win, textvariable=key_var, values=key_history + [str(Path.home() / ".ssh" / "id_rsa")])
+        key_dropdown.pack(fill=tk.X, padx=10, pady=(0, 3))
+
+        ttk.Button(win, text="Browse...", command=browse_key).pack(padx=10, pady=(0, 5), anchor="e")
+
+        def browse_key():
+            from tkinter.filedialog import askopenfilename
+            path = askopenfilename(title="Select Private Key File", filetypes=[("Key files", "*.pem *.ppk"), ("All files", "*.*")])
+            if path:
+                key_var.set(path)
+
+        remember_pass_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(win, text="Remember key passphrase this session", variable=remember_pass_var).pack(anchor="w", padx=10, pady=(0, 5))
+
+
         def on_select(event):
             label = target_combo.get()
             if label in target_map:
@@ -60,11 +124,49 @@ class SSHService:
         def launch_ssh():
             host = host_entry.get().strip()
             user = user_entry.get().strip()
-            if host and user:
+            passwd = pass_entry.get().strip()
+            use_key = use_key_var.get()
+            key_path = key_var.get().strip()
+
+            if host and user and (passwd or use_key):
                 self.test_creds = {"host": host, "user": user}
-                ssh_cmd = f"ssh {user}@{host}"
-                self.ssh_process = subprocess.Popen(["cmd.exe", "/k", ssh_cmd])
-                win.destroy()
+                self.ssh_client = paramiko.SSHClient()
+                self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+                try:
+                    if use_key and key_path:
+                        try:
+                            if self.session_passphrase:
+                                private_key = paramiko.RSAKey.from_private_key_file(key_path, password=self.session_passphrase)
+                            else:
+                                try:
+                                    private_key = paramiko.RSAKey.from_private_key_file(key_path)
+                                except paramiko.ssh_exception.PasswordRequiredException:
+                                    pw = simpledialog.askstring("Key Passphrase", f"Enter passphrase for key:\n{key_path}", show="*")
+                                    private_key = paramiko.RSAKey.from_private_key_file(key_path, password=pw)
+                                    if remember_pass_var.get():
+                                        self.session_passphrase = pw
+
+                            self.ssh_client.connect(hostname=host, username=user, pkey=private_key)
+                            save_key_to_history(key_path)
+                            self.output_console.insert(tk.END, f"[SSH] Connected using key: {key_path}\n")
+
+                            # Show remote connection info
+                            self.exec_command("echo Connected to $(hostname) as $(whoami); uname -a", log_prefix="[Remote Info]")
+
+                            win.destroy()
+
+                        except Exception as e:
+                            messagebox.showerror("Key Auth Error", f"Could not connect using private key:\n{e}")
+
+                    else:
+                        self.ssh_client.connect(hostname=host, username=user, password=passwd)
+
+                    self.output_console.insert(tk.END, f"[SSH] Connected to {user}@{host}\n")
+                    win.destroy()
+                except Exception as e:
+                    messagebox.showerror("SSH Connection Error", str(e))
+
 
         def save_connection():
             host = host_entry.get().strip()
@@ -77,10 +179,36 @@ class SSHService:
         ttk.Button(win, text="Connect", command=launch_ssh).pack(pady=5)
         ttk.Button(win, text="Save Connection", command=save_connection).pack(pady=5)
 
+    def exec_command(self, command, log_prefix="[SSH]"):
+        if not self.ssh_client:
+            messagebox.showwarning("Not Connected", "You must connect first.")
+            return
+
+        def run():
+            try:
+                stdin, stdout, stderr = self.ssh_client.exec_command(command)
+                output = stdout.read().decode()
+                error = stderr.read().decode()
+                if output:
+                    self.output_console.insert(tk.END, f"\n{log_prefix} Output:\n{output}")
+                if error:
+                    self.output_console.insert(tk.END, f"\n{log_prefix} Error:\n{error}")
+            except Exception as e:
+                self.output_console.insert(tk.END, f"\n{log_prefix} Exception:\n{str(e)}\n")
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def run_command_prompt(self):
+        cmd = simpledialog.askstring("Run SSH Command", "Enter command to run on controller:")
+        if cmd:
+            self.exec_command(cmd)
+
+
     def close(self):
-        if self.ssh_process:
-            self.ssh_process.terminate()
-            self.output_console.insert(tk.END, "\n[SSH Closed] Connection terminated.\n")
-            self.ssh_process = None
+        if self.ssh_client:
+            self.ssh_client.close()
+            self.output_console.insert(tk.END, "\n[SSH] Connection closed.\n")
+            self.ssh_client = None
         else:
             messagebox.showinfo("No Active Connection", "There is no SSH connection to close.")
+
