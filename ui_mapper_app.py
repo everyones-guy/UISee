@@ -15,11 +15,11 @@ def extract_resources(config_str):
     except Exception:
         return []
 
-def init_db():
+def init_db(conn=None):
     if os.path.exists(DB_FILE):
         os.remove(DB_FILE)
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
+    internal_conn = conn or sqlite3.connect(DB_FILE)
+    cur = internal_conn.cursor()
 
     cur.execute("""CREATE TABLE IF NOT EXISTS pages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,12 +66,13 @@ def init_db():
     )""")
 
 
-    conn.commit()
-    conn.close()
+    internal_conn.commit()
+    if not conn:  # Only close if we opened it
+        internal_conn.close()
 
-def parse_sql_and_js(sql_folder, js_folder):
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
+def parse_sql_and_js(sql_folder, js_folder, conn=None):
+    internal_conn = conn or sqlite3.connect(DB_FILE)
+    cur = internal_conn.cursor()
 
     # SQL parsing
     for filename in os.listdir(sql_folder):
@@ -154,8 +155,9 @@ def parse_sql_and_js(sql_folder, js_folder):
                     """, (page_name, fn_name, args.strip()))
 
 
-    conn.commit()
-    conn.close()
+    internal_conn.commit()
+    if not conn:  # Only close if we opened it
+        internal_conn.close()
 
 def ask_user_for_folders():
     root = tk.Tk()
@@ -176,11 +178,15 @@ def launch_main_gui():
 # ---------------- MAIN ENTRY ----------------
 if __name__ == "__main__":
     sql_path, js_path = ask_user_for_folders()
-    init_db()
-    parse_sql_and_js(sql_path, js_path)
+    conn = sqlite3.connect(DB_FILE)
 
-    try:
-        launch_main_gui()
-    except Exception as e:
-        messagebox.showerror("Launch Error", str(e))
+    init_db(conn=conn)
+    parse_sql_and_js(sql_path, js_path, conn=conn)
+
+    from UISee import UIMapperGUI
+    root = tk.Tk()
+    app = UIMapperGUI(root)
+    app.conn = conn  # reuse shared connection
+    root.mainloop()
+
 
