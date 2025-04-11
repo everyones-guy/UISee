@@ -37,7 +37,7 @@
     <Compile Include="services\__init__.py" />
     <Compile Include="start_ui_mapper.py" />
     <Compile Include="UISee.py" />
-    <Compile Include="ui_mapper_app.py" />
+    <Compile Include="db_bootstrap.py" />
     <Compile Include="services\custom_logger.py" />
     <Compile Include="utils\ui_mapper_adapter.py" />
     <Compile Include="utils\__init__.py" />

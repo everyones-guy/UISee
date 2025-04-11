@@ -89,11 +89,11 @@ class ParserService:
         return [row[0] for row in cur.fetchall()]
 
     def ask_user_for_folders(self):
-        from ui_mapper_app import ask_user_for_folders
+        from db_bootstrap import ask_user_for_folders
         return ask_user_for_folders()
 
     def load_sql_and_js(self, sql_path, js_path):
-        from ui_mapper_app import parse_sql_and_js, init_db
+        from db_bootstrap import parse_sql_and_js, init_db
         init_db()
         parse_sql_and_js(sql_path, js_path)
 

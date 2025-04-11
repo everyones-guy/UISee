@@ -10,7 +10,7 @@ import logging
 import json
 import time
 
-from ui_mapper_app import init_db, parse_sql_and_js
+from gui.core import init_db, parse_sql_and_js
 import UISee
 
 DB_FILE = "ui_map.db"

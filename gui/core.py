@@ -13,7 +13,7 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 from services.mqtt_service import MQTTService
 from services.parser_service import ParserService
 from utils.ui_mapper_adapter import UIMQTTAdapter
-from ui_mapper_app import init_db, parse_sql_and_js, ask_user_for_folders
+from db_bootstrap import init_db, parse_sql_and_js, ask_user_for_folders
 
 # Optional but incorrect import in your version:
 # from pip._vendor.rich.control import i  <-- remove this line, it does nothing and throws an error

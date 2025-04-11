@@ -11,8 +11,8 @@ import json
 import time
 import sqlite3
 
-from ui_mapper_app import init_db, parse_sql_and_js
-from ui.ui_see_main import UIMapperGUI
+from db_bootstrap import init_db, parse_sql_and_js
+from gui.core import UIMapperGUI
 
 DB_FILE = "ui_map.db"
 LOG_DIR = "logs"

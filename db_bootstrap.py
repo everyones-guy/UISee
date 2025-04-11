@@ -3,7 +3,7 @@ import re
 import json
 import sqlite3
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog, messagebox
 
 DB_FILE = "ui_map.db"
 
@@ -168,25 +168,4 @@ def ask_user_for_folders():
         messagebox.showerror("Missing Folder", "You must select both folders to proceed.")
         exit()
     return sql_folder, js_folder
-
-def launch_main_gui():
-    import UISee
-    root = tk.Tk()
-    app = UISee.UIMapperGUI(root)
-    root.mainloop
-    
-# ---------------- MAIN ENTRY ----------------
-if __name__ == "__main__":
-    sql_path, js_path = ask_user_for_folders()
-    conn = sqlite3.connect(DB_FILE)
-
-    init_db(conn=conn)
-    parse_sql_and_js(sql_path, js_path, conn=conn)
-
-    from UISee import UIMapperGUI
-    root = tk.Tk()
-    app = UIMapperGUI(root)
-    app.conn = conn  # reuse shared connection
-    root.mainloop()
-
 

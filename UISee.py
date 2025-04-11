@@ -1,5 +1,5 @@
 from services.mqtt_service import MQTTService
-from ui_mapper_app import init_db, parse_sql_and_js, ask_user_for_folders
+from db_bootstrap import init_db, parse_sql_and_js, ask_user_for_folders
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
