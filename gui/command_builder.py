@@ -14,18 +14,6 @@ if env_path.exists():
 else:
     print(".env file not found at config/.env")
 
-DEFAULT_TEST_CREDS = {
-    "host": "127.0.0.1",
-    "user": "pi"
-}
-
-DEFAULT_MQTT_CREDS = {
-    "host": "localhost",
-    "port": "1883",
-    "username": "guest",
-    "password": "guest"
-}
-
 class CommandBuilder:
     def __init__(self, app_context):
         self.app = app_context
@@ -47,21 +35,22 @@ class CommandBuilder:
 
     
         self.test_creds = {
-            "host": os.getenv("SSH_HOST", DEFAULT_TEST_CREDS["host"]),
-            "user": os.getenv("SSH_USER", DEFAULT_TEST_CREDS["user"])
+            "host": os.getenv("SSH_HOST", "localhost"),
+            "user": os.getenv("SSH_USER", "rsshuser")
         }
 
         self.mqtt_creds = {
-            "host": os.getenv("MQTT_BROKER", DEFAULT_MQTT_CREDS["host"]),
-            "port": os.getenv("MQTT_PORT", DEFAULT_MQTT_CREDS["port"]),
-            "username": os.getenv("MQTT_USERNAME", DEFAULT_MQTT_CREDS["username"]),
-            "password": os.getenv("MQTT_PASSWORD", DEFAULT_MQTT_CREDS["password"]),
+            "host": os.getenv("MQTT_BROKER", "localhost"),
+            "port": os.getenv("MQTT_PORT", 1883),
+            "username": os.getenv("MQTT_USERNAME", "testadmin"),
+            "password": os.getenv("MQTT_PASSWORD", "Abcdef123"),
         }
 
 
     def open_builder(self):
         win = tk.Toplevel(self.root)
         win.title("Assemble Test Commands")
+        win.resizable(True,True)
 
         # --- Dropdown Row ---
         row = ttk.Frame(win)
@@ -96,7 +85,8 @@ class CommandBuilder:
         ttk.Entry(row4, textvariable=self.value).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # --- Command Output ---
-        self.output = tk.Text(win, height=6, bg="#111", fg="#0f0")
+        self.output = tk.Text(win, height=12, bg="#111", fg="#0f0")
+        win.resizable(True,True)
         self.output.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         # --- Buttons ---
