@@ -1,4 +1,5 @@
 
+from pip._vendor.rich.control import i
 from services.mqtt_service import MQTTService
 from ui_mapper_app import init_db, parse_sql_and_js, ask_user_for_folders
 from utils.ui_mapper_adapter import UIMQTTAdapter
@@ -24,18 +25,6 @@ else:
     print(".env file not found at config/.env")
 
 DB_FILE = "ui_map.db"
-
-DEFAULT_TEST_CREDS = {
-    "host": "127.0.0.1",
-    "user": "pi"
-}
-
-DEFAULT_MQTT_CREDS = {
-    "host": "localhost",
-    "port": "1883",
-    "username": "guest",
-    "password": "guest"
-}
 
 class UIMapperGUI:
     def __init__(self, root):
@@ -114,12 +103,19 @@ class UIMapperGUI:
         ttk.Button(toolbar, text="Close All Queues", command=self.close_all_test_queues).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Connect to Controller", command=self.connect_ssh).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Subscribe to MQTT", command=self.subscribe_mqtt).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="Run Remote Command", command=self.run_remote_command).pack(side=tk.LEFT, padx=(0, 5))
 
+
+    def run_remote_command(self):
+        if hasattr(self, "ssh_service"):
+            self.ssh_service.run_command_prompt()
+        else:
+            messagebox.showwarning("SSH Not Ready", "SSH service not initialized yet.")
 
 
     def load_remote_config_inputs(self):
         try:
-            cmd = "cat /usr/share/Configfiles/*.json"
+            cmd = "cat /usr/share/ConfigFiles/*.json \| jq"
             ssh_cmd = f"ssh {self.test_creds['user']}@{self.test_creds['host']} \"{cmd}\""
             result = subprocess.run(ssh_cmd, shell=True, capture_output=True, text=True)
 
@@ -312,23 +308,48 @@ class UIMapperGUI:
         return result
 
     def reparse_files(self):
-        confirm = messagebox.askyesno("Reparse Files", "This will clear and reload the database.\nContinue?")
+        confirm = messagebox.askyesno("Reparse Files", "This will create a new database version and reload.\nContinue?")
         if not confirm:
             return
 
         try:
             sql_path, js_path = ask_user_for_folders()
-            init_db()
-            parse_sql_and_js(sql_path, js_path)
-            messagebox.showinfo("Success", "Files re-parsed and database updated.")
 
-            # Optional: refresh UI if needed
+            # --- Generate a new timestamped database file
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            new_db_path = f"ui_map_{timestamp}.db"
+
+            # --- Close old connection if open
+            if self.conn:
+                self.conn.close()
+
+            # --- Set new DB path globally or on self
+            self.conn = sqlite3.connect(new_db_path)
+            self.active_db_file = new_db_path
+
+            # --- Re-initialize schema and reparse
+            init_db(conn=self.conn) # make sure init_db accepts conn=...
+            parse_sql_and_js(sql_path, js_path, conn=self.conn)
+
+            messagebox.showinfo("Success", f"New DB created:\n{new_db_path}")
+            self.output_console.insert(tk.END, f"[DB] New database loaded: {new_db_path}\n")
+
+            # Optional: refresh any pages, dropdowns, filters
             if hasattr(self, "load_pages"):
                 self.load_pages()
-            if hasattr(self, "apply_filters"):
-                self.apply_filters()
+
         except Exception as e:
             messagebox.showerror("Parse Error", f"An error occurred:\n{str(e)}")
+
+
+    def load_remote_config_inputs(self):
+        try:
+            ssh_client = self.mqtt_adapter.client
+            if not ssh_client:
+                self.output_console.insert(tk.END, "[CONFIG] No SSH client available.\n")
+                return
+
+            stdin, stdout, stderr = ssh_client.exec_command
 
 
 # ----- Entry Point -----
