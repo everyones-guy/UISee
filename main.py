@@ -127,9 +127,16 @@ class UISeeLauncher:
                     if not sql_path or not js_path:
                         return
                     if os.path.exists(DB_FILE):
-                        os.remove(DB_FILE)
-                    init_db()
-                    parse_sql_and_js(sql_path, js_path)
+                        try:
+                            os.remove(DB_FILE)
+                        except PermissionError:
+                            print("Cannot delete ui_map.db — it's currently in use.")
+                            exit(1)
+
+                    conn = sqlite3.connect(DB_FILE)
+                    init_db(conn)
+                    parse_sql_and_js(sql_path, js_path, conn)
+
                     logging.info("Database re-parsed and loaded.")
 
                 self.save_widget_tree_snapshot()

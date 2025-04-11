@@ -16,9 +16,18 @@ def extract_resources(config_str):
         return []
 
 def init_db(conn=None):
-    if os.path.exists(DB_FILE):
-        os.remove(DB_FILE)
-    internal_conn = conn or sqlite3.connect(DB_FILE)
+    should_close = False
+    internal_conn = conn
+
+    if not conn:
+        if os.path.exists(DB_FILE):
+            try:
+                os.remove(DB_FILE)
+            except PermissionError:
+                raise RuntimeError("Cannot delete ui_map.db because it is currently in use.")
+        internal_conn = sqlite3.connect(DB_FILE)
+        should_close = True
+
     cur = internal_conn.cursor()
 
     cur.execute("""CREATE TABLE IF NOT EXISTS pages (
@@ -65,10 +74,10 @@ def init_db(conn=None):
         parameters TEXT
     )""")
 
-
     internal_conn.commit()
-    if not conn:  # Only close if we opened it
-        internal_conn.close()
+    if should_close:
+        if not conn:  # Only close if we opened it
+            internal_conn.close()
 
 def parse_sql_and_js(sql_folder, js_folder, conn=None):
     internal_conn = conn or sqlite3.connect(DB_FILE)
