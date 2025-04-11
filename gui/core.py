@@ -1,22 +1,22 @@
-
-from pip._vendor.rich.control import i
-from services.mqtt_service import MQTTService
-from ui_mapper_app import init_db, parse_sql_and_js, ask_user_for_folders
-from utils.ui_mapper_adapter import UIMQTTAdapter
-from services.parser_service import ParserService
-
-
-import sqlite3
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog
 import os
 import json
 import re
+import time
+import sqlite3
 import subprocess
-
-
-from dotenv import load_dotenv
 from pathlib import Path
+from dotenv import load_dotenv
+
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, simpledialog
+
+from services.mqtt_service import MQTTService
+from services.parser_service import ParserService
+from utils.ui_mapper_adapter import UIMQTTAdapter
+from ui_mapper_app import init_db, parse_sql_and_js, ask_user_for_folders
+
+# Optional but incorrect import in your version:
+# from pip._vendor.rich.control import i  <-- remove this line, it does nothing and throws an error
 
 env_path = Path("config/.env")
 if env_path.exists():
@@ -32,7 +32,6 @@ class UIMapperGUI:
         self.root.title("UI Structure Mapper")
         self.conn = sqlite3.connect(DB_FILE)
 
-        # Environment-based credentials (can be overridden by UI)
         self.test_creds = {
             "host": os.getenv("SSH_HOST", ""),
             "user": os.getenv("SSH_USER", "")
@@ -45,22 +44,16 @@ class UIMapperGUI:
             "port": os.getenv("MQTT_PORT", "1883")
         }
 
-        # Unified MQTT + SSH command adapter
         self.mqtt_adapter = UIMQTTAdapter(self.test_creds)
         self.client = MQTTService()
-
         self.parser_service = ParserService(self.root, self.conn)
 
-        # State + buffers
         self.command_queue = []
         self.mqtt_output_buffer = []
         self.configured_inputs = []
 
-        # Setup local DB tables
         self.init_function_map_table()
         self.init_mqtt_topic_table()
-
-        # Build main UI
         self.setup_ui()
 
     def init_function_map_table(self):
@@ -88,12 +81,10 @@ class UIMapperGUI:
         self.conn.commit()
 
     def setup_ui(self):
-        # Live output window (CLI-style)
         self.output_console = tk.Text(self.root, height=6, bg="black", fg="lime", insertbackground="white")
         self.output_console.pack(fill=tk.X, padx=5, pady=(0, 5))
         self.output_console.insert(tk.END, "Console ready.\n")
 
-        # Top-level toolbar with core actions
         toolbar = ttk.Frame(self.root)
         toolbar.pack(fill=tk.X, padx=5, pady=2)
         ttk.Button(toolbar, text="Assemble Command", command=self.open_command_builder).pack(side=tk.LEFT)
@@ -105,67 +96,62 @@ class UIMapperGUI:
         ttk.Button(toolbar, text="Subscribe to MQTT", command=self.subscribe_mqtt).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Run Remote Command", command=self.run_remote_command).pack(side=tk.LEFT, padx=(0, 5))
 
-
-    def run_remote_command(self):
-        if hasattr(self, "ssh_service"):
-            self.ssh_service.run_command_prompt()
-        else:
-            messagebox.showwarning("SSH Not Ready", "SSH service not initialized yet.")
-
-
     def load_remote_config_inputs(self):
         try:
-            cmd = "cat /usr/share/ConfigFiles/*.json \| jq"
-            ssh_cmd = f"ssh {self.test_creds['user']}@{self.test_creds['host']} \"{cmd}\""
-            result = subprocess.run(ssh_cmd, shell=True, capture_output=True, text=True)
-
-            if result.returncode != 0:
-                self.output_console.insert(tk.END, f"[CONFIG] Failed to fetch config files:\n{result.stderr}\n")
+            if not hasattr(self, "ssh_service") or not self.ssh_service.ssh_client:
+                self.output_console.insert(tk.END, "[CONFIG] SSH connection not established.\n")
                 return
 
-            # Try to parse all combined JSONs (one big array or object)
+            cmd = "cat /usr/share/ConfigFiles/*.json"
+            stdin, stdout, stderr = self.ssh_service.ssh_client.exec_command(cmd)
+
+            raw = stdout.read().decode().strip()
+            error = stderr.read().decode().strip()
+
+            if error:
+                self.output_console.insert(tk.END, f"[CONFIG] Failed to fetch config files:\n{error}\n")
+                return
+
             try:
-                raw = result.stdout.strip()
-                # Handle multiple files concatenated
-                configs = [json.loads(part) for part in raw.split("}\n{")]
+                # Attempt to parse as one JSON array or multiple objects
+                if raw.startswith("{") and raw.endswith("}"):
+                    parts = re.split(r"}\s*{", raw)
+                    configs = [json.loads("{" + part + "}" if not part.startswith("{") else part) for part in parts]
+                elif raw.startswith("["):
+                    configs = json.loads(raw)
+                else:
+                    raise ValueError("Unexpected JSON structure.")
+
                 self.remote_inputs = []
                 for cfg in configs:
                     self.remote_inputs.extend(cfg.get("hardwareInputs", []))
+
+                self.output_console.insert(tk.END, f"[CONFIG] Found {len(self.remote_inputs)} hardware inputs.\n")
+
             except Exception as e:
                 self.output_console.insert(tk.END, f"[CONFIG] JSON parse error: {str(e)}\n")
-                return
-
-            self.output_console.insert(tk.END, f"[CONFIG] Found {len(self.remote_inputs)} hardware inputs.\n")
 
         except Exception as e:
             self.output_console.insert(tk.END, f"[CONFIG] Error: {str(e)}\n")
 
-
-    # builders
     def open_command_builder(self):
         from gui.command_builder import CommandBuilder
-        self.command_builder_instance = CommandBuilder(self)  # store reference
-        self.command_builder_instance.open_builder()
+        builder = CommandBuilder(self.root, self.mqtt_adapter, [], self.test_creds, self.conn, self.configured_inputs, self.output_console)
+        builder.open_command_builder()
 
     def open_test_queue_builder(self):
         from gui.test_queue import TestQueueBuilder
         from datetime import datetime
-
-        # Create a new Toplevel window
         new_win = tk.Toplevel(self.root)
         new_win.title(f"Test Queue - {datetime.now().strftime('%H:%M:%S')}")
-
-        # Build a new TestQueueBuilder instance tied to the new window
         builder = TestQueueBuilder(self)
         builder.root = new_win
         builder.build_tab()
 
-        # Track multiple windows
         if not hasattr(self, 'test_queue_windows'):
             self.test_queue_windows = []
         self.test_queue_windows.append(builder)
 
-        # Optionally load from Command Builder if user agrees
         if hasattr(self, "command_builder_instance"):
             if messagebox.askyesno("Import", "Import steps from Command Builder?"):
                 builder.import_steps_from_command_builder()
@@ -182,46 +168,16 @@ class UIMapperGUI:
         else:
             self.output_console.insert(tk.END, "[INFO] No Test Queue windows to close.\n")
 
-
-    # ----- SSH + MQTT Controls -----
-
     def connect_ssh(self):
-        popup = tk.Toplevel(self.root)
-        popup.title("Connect to Controller")
+        from services.ssh_service import SSHService
+        self.ssh_service = SSHService(self.root, self.conn, self.output_console)
+        self.ssh_service.connect()
 
-        host_var = tk.StringVar(value=self.test_creds.get("host", ""))
-        user_var = tk.StringVar(value=self.test_creds.get("user", ""))
-
-        ttk.Label(popup, text="SSH Host:").pack(padx=10, anchor="w")
-        ttk.Entry(popup, textvariable=host_var).pack(fill=tk.X, padx=10, pady=(0, 5))
-
-        ttk.Label(popup, text="SSH User:").pack(padx=10, anchor="w")
-        ttk.Entry(popup, textvariable=user_var).pack(fill=tk.X, padx=10, pady=(0, 10))
-
-        def connect():
-            self.test_creds["host"] = host_var.get()
-            self.test_creds["user"] = user_var.get()
-
-            self.output_console.insert(tk.END, f"[SSH] Connecting to {self.test_creds['host']} as {self.test_creds['user']}...\n")
-            try:
-                self.mqtt_adapter.ssh_host = self.test_creds["host"]
-                self.mqtt_adapter.ssh_user = self.test_creds["user"]
-                self.mqtt_adapter.client.connect()
-                self.output_console.insert(tk.END, "[SSH] Connected successfully.\n")
-
-                self.load_remote_config_inputs()  # <-- Auto-load simulate inputs
-                popup.destroy()
-            except Exception as e:
-                messagebox.showerror("SSH Error", str(e))
-
-        ttk.Button(popup, text="Connect", command=connect).pack(pady=5)
-
-    def close_ssh(self):
-        try:
-            self.mqtt_adapter.client.disconnect()
-            self.output_console.insert(tk.END, "[SSH] Disconnected from controller.\n")
-        except Exception as e:
-            self.output_console.insert(tk.END, f"[SSH Close Error] {e}\n")
+    def run_remote_command(self):
+        if hasattr(self, "ssh_service"):
+            self.ssh_service.run_command_prompt()
+        else:
+            messagebox.showwarning("SSH Not Ready", "SSH service not initialized yet.")
 
     def subscribe_mqtt(self):
         popup = tk.Toplevel(self.root)
@@ -254,7 +210,6 @@ class UIMapperGUI:
 
         ttk.Button(popup, text="Subscribe", command=subscribe).pack(pady=5)
 
-
     def send_simin_command(self):
         cmd = simpledialog.askstring("SIMIN Command", "Enter SIMIN command to send:")
         if not cmd:
@@ -266,7 +221,6 @@ class UIMapperGUI:
             self.output_console.see(tk.END)
         except Exception as e:
             self.output_console.insert(tk.END, f"[SIMIN ERROR] {e}\n")
-
 
     def simulate_input_popup(self):
         popup = tk.Toplevel(self.root)
@@ -301,12 +255,6 @@ class UIMapperGUI:
             self.mirror_mode = MirrorModeController(self, self.root)
         self.mirror_mode.toggle_mirror_mode()
 
-    def run_ssh_command(self, cmd):
-        result = self.mqtt_adapter.send_via_ssh(cmd)
-        if isinstance(result, dict):
-            return result.get("response", result.get("error", "Unknown result"))
-        return result
-
     def reparse_files(self):
         confirm = messagebox.askyesno("Reparse Files", "This will create a new database version and reload.\nContinue?")
         if not confirm:
@@ -314,27 +262,20 @@ class UIMapperGUI:
 
         try:
             sql_path, js_path = ask_user_for_folders()
-
-            # --- Generate a new timestamped database file
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             new_db_path = f"ui_map_{timestamp}.db"
 
-            # --- Close old connection if open
             if self.conn:
                 self.conn.close()
 
-            # --- Set new DB path globally or on self
             self.conn = sqlite3.connect(new_db_path)
             self.active_db_file = new_db_path
 
-            # --- Re-initialize schema and reparse
-            init_db(conn=self.conn) # make sure init_db accepts conn=...
+            init_db(conn=self.conn)
             parse_sql_and_js(sql_path, js_path, conn=self.conn)
 
             messagebox.showinfo("Success", f"New DB created:\n{new_db_path}")
             self.output_console.insert(tk.END, f"[DB] New database loaded: {new_db_path}\n")
-
-            # Optional: refresh any pages, dropdowns, filters
             if hasattr(self, "load_pages"):
                 self.load_pages()
 
@@ -342,17 +283,7 @@ class UIMapperGUI:
             messagebox.showerror("Parse Error", f"An error occurred:\n{str(e)}")
 
 
-    def load_remote_config_inputs(self):
-        try:
-            ssh_client = self.mqtt_adapter.client
-            if not ssh_client:
-                self.output_console.insert(tk.END, "[CONFIG] No SSH client available.\n")
-                return
-
-            stdin, stdout, stderr = ssh_client.exec_command
-
-
-# ----- Entry Point -----
+# ---------- Entry Point ----------
 if __name__ == '__main__':
     sql_path, js_path = ask_user_for_folders()
     init_db()
